@@ -1,12 +1,24 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 06 · Teste do Agente Híbrido (local, sem deploy)
-# MAGIC Executa o `agent.py` com credenciais do notebook e valida as 3 ferramentas.
+# MAGIC Executa o `agent.py` com credenciais do notebook e valida as 3 ferramentas
+# MAGIC (a de dados usa o **Genie Space via MCP**).
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk
+# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk databricks-mcp
 # MAGIC %restart_python
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo")
+dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema")
+dbutils.widgets.text("genie_space_id", "", "Genie Space ID")
+
+import os
+os.environ["CATALOG"] = dbutils.widgets.get("catalog").strip()
+os.environ["SCHEMA"] = dbutils.widgets.get("schema").strip()
+os.environ["GENIE_SPACE_ID"] = dbutils.widgets.get("genie_space_id").strip()
 
 # COMMAND ----------
 

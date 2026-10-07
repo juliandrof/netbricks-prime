@@ -45,7 +45,7 @@ automaticamente; o catálogo **não** é criado (deve existir e você precisa te
 - **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
 - **Vector Search** habilitado no workspace.
 - Acesso às **Foundation Model APIs** (`databricks-claude-sonnet-5`, `databricks-gte-large-en`).
-- Um **SQL Warehouse** (o agente descobre um automaticamente se nenhum ID for informado).
+- Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consome via MCP.
 
 ---
 
@@ -75,12 +75,24 @@ ferramentas via *tool calling* (loop de até 5 rodadas):
 |------------|------|----------|
 | `buscar_titulos` | Vector Search (`catalogo_index`) | Descoberta/recomendação por tema ou clima |
 | `suporte` | RAG (`ajuda_index`) | Dúvidas de conta/plano/cobrança/cancelamento |
-| `consultar_dados` | SQL parametrizado seguro | Métricas agregadas (títulos por gênero, usuários por plano, churn por plano, total de títulos) |
+| `consultar_dados` | **Genie Space via MCP** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (06) quanto no serving (05). O warehouse para `consultar_dados` é
-descoberto automaticamente; para fixar um, defina a variável de ambiente `WAREHOUSE_ID` (ou o
-widget no notebook 05).
+lab — roda tanto no notebook (06) quanto no serving (05). A ferramenta `consultar_dados` chama o
+**MCP gerenciado do Databricks para Genie** (`/api/2.0/mcp/genie/{space_id}`): o agente envia a
+pergunta em linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O
+Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 05/06).
+
+### Genie Space para a ferramenta de dados
+
+1. No workspace, crie um **Genie Space** apontando para as tabelas do schema do lab
+   (principalmente `catalogo`, `usuarios`, `features_usuarios`) e dê um título/descrição.
+2. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
+3. Informe esse ID no widget `genie_space_id` dos notebooks **05** (deploy) e **06** (teste).
+
+> Como os dados são idênticos entre schemas (geração determinística), um **único Genie Space
+> compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo
+> `GENIE_SPACE_ID`.
 
 ---
 
@@ -112,7 +124,7 @@ guardrails e é registrada — o agente continua idêntico, mas a camada de GenA
 
 O `agents.deploy` publica o agente em Model Serving e, para isso, **cria uma service principal**
 para o endpoint. Requisitos: cota de service principals disponível na conta e os *resources*
-declarados (índices de Vector Search, endpoints de FM e um SQL warehouse).
+declarados (índices de Vector Search, endpoints de FM e o Genie Space).
 
 Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
 agente continua **totalmente funcional via notebook/job** — use o **notebook 06** para rodá-lo

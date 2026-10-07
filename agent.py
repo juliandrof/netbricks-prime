@@ -4,9 +4,12 @@ Agente Híbrido da Netbricks Prime (Mosaic AI Agent Framework — ChatAgent).
 Três ferramentas, escolhidas pelo próprio LLM (tool calling):
   1. buscar_titulos   -> busca semântica no catálogo (Vector Search) = descoberta/recomendação
   2. suporte          -> RAG na central de ajuda (Vector Search)
-  3. consultar_dados  -> métricas estruturadas do catálogo/usuários (SQL parametrizado seguro)
+  3. consultar_dados  -> perguntas em linguagem natural sobre os números da plataforma,
+                         respondidas por um **Genie Space** acessado via **MCP gerenciado**
+                         do Databricks (`/api/2.0/mcp/genie/{space_id}`). O Genie gera e executa
+                         o SQL com governança — o agente não monta SQL diretamente.
 
-Defaults já batem com os recursos do lab; funciona no serving sem variáveis de ambiente.
+Defaults já batem com os recursos do lab; informe o GENIE_SPACE_ID (env ou widget no deploy).
 """
 import json
 import os
@@ -15,6 +18,7 @@ from typing import Any, Optional
 import mlflow
 from databricks.sdk import WorkspaceClient
 from databricks.vector_search.client import VectorSearchClient
+from databricks_mcp import DatabricksMCPClient
 from mlflow.deployments import get_deploy_client
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
@@ -25,15 +29,15 @@ VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
 LLM = os.environ.get("LLM_MODEL", "databricks-claude-sonnet-5")
-# Vazio = descobre automaticamente um SQL warehouse disponível no workspace.
-WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "")
+# ID do Genie Space usado pela ferramenta consultar_dados (via MCP). Obrigatório para essa tool.
+GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 
 SYSTEM_PROMPT = (
     "Você é o assistente da Netbricks Prime, uma plataforma de streaming. Responda SEMPRE "
     "em português do Brasil. Use as ferramentas disponíveis para: recomendar títulos "
     "(buscar_titulos), tirar dúvidas de conta/planos/cobrança (suporte) e responder "
-    "perguntas sobre números da plataforma (consultar_dados). Baseie-se nos resultados das "
-    "ferramentas; não invente títulos, valores ou políticas. Seja objetivo e simpático."
+    "perguntas sobre números da plataforma (consultar_dados, que usa o Genie). Baseie-se nos "
+    "resultados das ferramentas; não invente títulos, valores ou políticas. Seja objetivo e simpático."
 )
 
 TOOLS = [
@@ -54,20 +58,15 @@ TOOLS = [
         }, "required": ["pergunta"]}}},
     {"type": "function", "function": {
         "name": "consultar_dados",
-        "description": "Retorna métricas agregadas da plataforma.",
+        "description": "Responde perguntas sobre os NÚMEROS da plataforma (títulos, usuários, planos, "
+                       "churn, engajamento) consultando o Genie Space via linguagem natural. Use para "
+                       "qualquer métrica/agregação (ex.: 'quantos títulos por gênero?', "
+                       "'qual o churn por plano?', 'quantos usuários Premium?').",
         "parameters": {"type": "object", "properties": {
-            "metrica": {"type": "string",
-                        "enum": ["titulos_por_genero", "usuarios_por_plano", "churn_por_plano", "total_titulos"],
-                        "description": "Qual métrica consultar"},
-        }, "required": ["metrica"]}}},
+            "pergunta": {"type": "string",
+                         "description": "Pergunta em linguagem natural sobre os dados da plataforma"},
+        }, "required": ["pergunta"]}}},
 ]
-
-_QUERIES = {
-    "titulos_por_genero": f"SELECT genero_principal, COUNT(*) n FROM {CATALOG}.{SCHEMA}.catalogo GROUP BY 1 ORDER BY n DESC LIMIT 20",
-    "usuarios_por_plano": f"SELECT plano, COUNT(*) n FROM {CATALOG}.{SCHEMA}.usuarios GROUP BY 1 ORDER BY n DESC",
-    "churn_por_plano": f"SELECT plano, ROUND(100.0*SUM(CASE WHEN status='Cancelado' THEN 1 ELSE 0 END)/COUNT(*),1) churn_pct FROM {CATALOG}.{SCHEMA}.usuarios GROUP BY 1 ORDER BY churn_pct DESC",
-    "total_titulos": f"SELECT COUNT(*) total FROM {CATALOG}.{SCHEMA}.catalogo",
-}
 
 
 def _texto(content) -> str:
@@ -84,7 +83,7 @@ class NetbricksAgent(ChatAgent):
         self._llm = get_deploy_client("databricks")
         self._vsc = None
         self._w = None
-        self._wh_id = None
+        self._mcp = None
 
     @property
     def vsc(self):
@@ -97,6 +96,14 @@ class NetbricksAgent(ChatAgent):
         if self._w is None:
             self._w = WorkspaceClient()
         return self._w
+
+    @property
+    def genie_mcp(self):
+        """Cliente MCP para o Genie Space gerenciado do Databricks."""
+        if self._mcp is None:
+            url = f"{self.w.config.host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}"
+            self._mcp = DatabricksMCPClient(server_url=url, workspace_client=self.w)
+        return self._mcp
 
     # ---- ferramentas ----
     @mlflow.trace(span_type="RETRIEVER")
@@ -118,28 +125,14 @@ class NetbricksAgent(ChatAgent):
                                      num_results=3).get("result", {}).get("data_array", []) or []
         return [{"topico": r[0], "conteudo": r[1]} for r in rows]
 
-    def _warehouse(self):
-        """Usa WAREHOUSE_ID se definido; senão descobre um warehouse disponível."""
-        if WAREHOUSE_ID:
-            return WAREHOUSE_ID
-        if self._wh_id is None:
-            whs = list(self.w.warehouses.list())
-            if not whs:
-                raise RuntimeError("Nenhum SQL warehouse disponível no workspace.")
-            running = [x for x in whs if str(getattr(x.state, "value", x.state)) == "RUNNING"]
-            self._wh_id = (running or whs)[0].id
-        return self._wh_id
-
     @mlflow.trace(span_type="TOOL")
-    def _consultar_dados(self, metrica):
-        sql = _QUERIES.get(metrica)
-        if not sql:
-            return {"erro": "métrica desconhecida"}
-        r = self.w.statement_execution.execute_statement(
-            warehouse_id=self._warehouse(), statement=sql, wait_timeout="30s")
-        data = r.result.data_array if r.result else []
-        cols = [c.name for c in r.manifest.schema.columns]
-        return [dict(zip(cols, row)) for row in (data or [])]
+    def _consultar_dados(self, pergunta):
+        """Encaminha a pergunta em linguagem natural ao Genie Space via MCP."""
+        if not GENIE_SPACE_ID:
+            return {"erro": "GENIE_SPACE_ID não configurado — defina a variável de ambiente."}
+        res = self.genie_mcp.call_tool(f"query_space_{GENIE_SPACE_ID}", {"query": pergunta})
+        texto = "\n".join(getattr(c, "text", "") for c in (res.content or []) if getattr(c, "text", None))
+        return {"resposta": texto or "(sem resposta do Genie)"}
 
     def _exec_tool(self, name, args):
         try:
@@ -148,7 +141,7 @@ class NetbricksAgent(ChatAgent):
             if name == "suporte":
                 return self._suporte(args.get("pergunta", ""))
             if name == "consultar_dados":
-                return self._consultar_dados(args.get("metrica", ""))
+                return self._consultar_dados(args.get("pergunta", ""))
             return {"erro": f"ferramenta desconhecida: {name}"}
         except Exception as e:
             return {"erro": str(e)[:300]}
