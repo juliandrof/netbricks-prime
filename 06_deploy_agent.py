@@ -17,7 +17,6 @@ dbutils.widgets.text("genie_space_id", "", "Genie Space ID (obrigatório)")
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
 GENIE_SPACE_ID = dbutils.widgets.get("genie_space_id").strip()
-assert GENIE_SPACE_ID, "Informe o genie_space_id (crie um Genie Space sobre as tabelas do schema)."
 
 VS_ENDPOINT = f"netbricks_vs_{SCHEMA}"
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
