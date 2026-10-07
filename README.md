@@ -58,11 +58,13 @@ automaticamente; o catálogo **não** é criado (deve existir e você precisa te
 | **2** | `02_modelo_churn.py` | Treina classificador de **churn** (`status = 'Cancelado'`), registra no UC e escora toda a base. | modelo `modelo_churn`, tabela `scores_churn` (prob + faixa de risco) |
 | **3** | `03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
 | **4** | `04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
+| **4.1** | `04.1_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
 | **5** | `05_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
 | **6** | `06_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
 
 > **Parâmetros:** em cada notebook, ajuste os widgets `catalog` e `schema` antes de rodar.
-> A ordem **0 → 6** é obrigatória (cada etapa consome a saída da anterior).
+> A ordem **0 → 4 → 4.1 → 5 → 6** é obrigatória (cada etapa consome a saída da anterior); o
+> `genie_space_id` criado no 4.1 é preenchido nos widgets dos notebooks 05 e 06.
 
 ---
 
@@ -85,10 +87,11 @@ Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widge
 
 ### Genie Space para a ferramenta de dados
 
-1. No workspace, crie um **Genie Space** apontando para as tabelas do schema do lab
-   (principalmente `catalogo`, `usuarios`, `features_usuarios`) e dê um título/descrição.
-2. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
-3. Informe esse ID no widget `genie_space_id` dos notebooks **05** (deploy) e **06** (teste).
+1. Rode o notebook **`04.1_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
+   e traz o passo a passo da UI + os textos prontos (tabelas, instruções, perguntas de exemplo).
+2. Siga as instruções do 04.1 para criar o Genie Space na UI apontando para as tabelas do schema.
+3. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
+4. Informe esse ID no widget `genie_space_id` dos notebooks **05** (deploy) e **06** (teste).
 
 > Como os dados são idênticos entre schemas (geração determinística), um **único Genie Space
 > compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo
