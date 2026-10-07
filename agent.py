@@ -19,8 +19,8 @@ from mlflow.deployments import get_deploy_client
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
 
-CATALOG = os.environ.get("CATALOG", "main")
-SCHEMA = os.environ.get("SCHEMA", "netbricks_prime")
+CATALOG = os.environ.get("CATALOG", "netbricks_prime")
+SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
 VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")

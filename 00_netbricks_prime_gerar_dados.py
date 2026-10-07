@@ -23,8 +23,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "main", "Catálogo (deve existir)")
-dbutils.widgets.text("schema", "netbricks_prime", "Schema (será criado)")
+dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo (deve existir)")
+dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema (será criado)")
 dbutils.widgets.text("n_usuarios", "120000", "Qtd. usuários")
 dbutils.widgets.text("n_titulos", "10000", "Qtd. títulos")
 dbutils.widgets.text("n_eventos", "1000000", "Qtd. eventos de visualização")
