@@ -3,7 +3,7 @@
 Lab fim-a-fim de uma plataforma de streaming fictícia (**Netbricks Prime**) sobre a Lakehouse.
 Cobre **geração de dados em escala → engenharia de atributos → dois modelos de ML (churn e
 propensão de upgrade) → Vector Search → um agente híbrido (Mosaic AI Agent Framework)**, com
-a camada de GenAI governada por **Mosaic AI Gateway**.
+a camada de GenAI governada por **Unity AI Gateway**.
 
 > Nenhum dado é real: usuários, títulos, e-mails (`@netbricksprime.com`) e artigos de ajuda são
 > todos sintéticos e gerados de forma determinística. O lab roda em **qualquer workspace
@@ -33,7 +33,7 @@ catálogo **não** é criado (informe um que você já tenha permissão de uso).
 | ML clássico | scikit-learn `HistGradientBoostingClassifier` | modelos de churn e de propensão de upgrade |
 
 > Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
-> **AI Gateway** é configurado (ver seção abaixo).
+> **Unity AI Gateway** é configurado (ver seção abaixo).
 
 ---
 
@@ -82,9 +82,9 @@ widget no notebook 05).
 
 ---
 
-## 🛡️ Onde entra o Mosaic AI Gateway
+## 🛡️ Onde entra o Unity AI Gateway
 
-O **AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
+O **Unity AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
 que o lab usa — principalmente o LLM do agente (`databricks-claude-sonnet-5`) e, se desejado, o
 endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o código do agente:
 
@@ -95,11 +95,11 @@ endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o cód
   Unity Catalog para auditoria e análise de custo;
 - **Fallbacks** — roteamento para modelos alternativos.
 
-**Como encaixar neste lab:** habilite o AI Gateway no endpoint de Foundation Model que o agente
+**Como encaixar neste lab:** habilite o Unity AI Gateway no endpoint de Foundation Model que o agente
 consome (`databricks-claude-sonnet-5`). Assim, cada chamada que o agente faz passa pelos
 guardrails e é registrada — o agente continua idêntico, mas a camada de GenAI fica governada.
 
-> **Observação importante:** os guardrails do AI Gateway são configurados em endpoints de
+> **Observação importante:** os guardrails do Unity AI Gateway são configurados em endpoints de
 > *pay-per-token*, *provisioned throughput* ou *external model* — **não** no endpoint do agente
 > em si. Por isso a governança é aplicada ao **endpoint do LLM subjacente** que o agente chama,
 > e não ao endpoint `netbricks_agent`.
