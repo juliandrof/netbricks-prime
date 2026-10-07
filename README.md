@@ -18,7 +18,7 @@ a camada de GenAI governada por **Unity AI Gateway**.
 | Compute | Serverless notebooks / jobs |
 | Catálogo | parâmetro `catalog` (padrão `main`) — **deve existir** |
 | Schema | parâmetro `schema` (padrão `netbricks_prime`) — **criado pelo notebook 0** |
-| Vector Search endpoint | `netbricks_vs_endpoint` (criado pelo notebook 4) |
+| Vector Search endpoint | `netbricks_vs_<schema>` (criado pelo notebook 4; nome inclui o schema para evitar colisão entre labs no mesmo workspace) |
 
 Todos os notebooks têm **widgets `catalog` e `schema`**, então o lab pode ser recriado em
 qualquer catálogo existente só trocando os parâmetros. O schema é criado automaticamente; o
@@ -124,7 +124,7 @@ então o deploy pode ser refeito quando houver cota.
 **Tabelas:** `catalogo`, `usuarios`, `eventos_visualizacao`, `central_ajuda_kb`,
 `features_usuarios`, `scores_churn`, `scores_upgrade`
 **Modelos (UC):** `modelo_churn`, `modelo_upgrade`, `netbricks_agent`
-**Vector Search:** endpoint `netbricks_vs_endpoint` + índices `catalogo_index`, `ajuda_index`
+**Vector Search:** endpoint `netbricks_vs_<schema>` + índices `catalogo_index`, `ajuda_index`
 
 ---
 

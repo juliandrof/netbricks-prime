@@ -17,7 +17,7 @@ dbutils.widgets.text("warehouse_id", "", "SQL Warehouse ID (vazio = auto)")
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
 
-VS_ENDPOINT = "netbricks_vs_endpoint"
+VS_ENDPOINT = f"netbricks_vs_{SCHEMA}"
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
 LLM = "databricks-claude-sonnet-5"
@@ -34,7 +34,7 @@ if not WAREHOUSE_ID:
 print("SQL Warehouse:", WAREHOUSE_ID)
 
 AGENT_MODEL = f"{CATALOG}.{SCHEMA}.netbricks_agent"
-AGENT_ENDPOINT = "netbricks_agent"
+AGENT_ENDPOINT = f"netbricks_agent_{SCHEMA}"  # serving endpoint é global no workspace
 
 import os
 os.environ.update({"VS_ENDPOINT": VS_ENDPOINT, "IDX_CAT": IDX_CAT, "IDX_AJU": IDX_AJU,

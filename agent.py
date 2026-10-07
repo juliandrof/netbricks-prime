@@ -19,9 +19,9 @@ from mlflow.deployments import get_deploy_client
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
 
-VS_ENDPOINT = os.environ.get("VS_ENDPOINT", "netbricks_vs_endpoint")
 CATALOG = os.environ.get("CATALOG", "main")
 SCHEMA = os.environ.get("SCHEMA", "netbricks_prime")
+VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
 LLM = os.environ.get("LLM_MODEL", "databricks-claude-sonnet-5")

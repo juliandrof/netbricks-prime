@@ -17,7 +17,7 @@ dbutils.widgets.text("schema", "netbricks_prime", "Schema")
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
 
-VS_ENDPOINT = "netbricks_vs_endpoint"
+VS_ENDPOINT = f"netbricks_vs_{SCHEMA}"  # endpoint por schema (evita colisão entre labs)
 EMB = "databricks-gte-large-en"
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
@@ -28,6 +28,12 @@ SRC_AJU = f"{CATALOG}.{SCHEMA}.central_ajuda_kb"
 
 from databricks.vector_search.client import VectorSearchClient
 vsc = VectorSearchClient(disable_notice=True)
+
+# Cria o endpoint se ainda não existir (nome dinâmico por schema)
+endpoints = [e["name"] for e in vsc.list_endpoints().get("endpoints", [])]
+if VS_ENDPOINT not in endpoints:
+    print(f"Criando endpoint {VS_ENDPOINT} ...")
+    vsc.create_endpoint(name=VS_ENDPOINT, endpoint_type="STANDARD")
 vsc.wait_for_endpoint(VS_ENDPOINT, verbose=True)
 
 def criar_ou_sync(index_name, source, pk, emb_col):
