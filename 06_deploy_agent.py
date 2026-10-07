@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 05 · Deploy do Agente Híbrido — Netbricks Prime
+# MAGIC # 06 · Deploy do Agente Híbrido — Netbricks Prime
 # MAGIC Loga o `agent.py` (com os *resources* que ele acessa), registra no Unity Catalog e
 # MAGIC faz deploy em Model Serving. A ferramenta de dados usa um **Genie Space via MCP**.
 

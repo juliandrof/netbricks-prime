@@ -58,13 +58,13 @@ automaticamente; o catálogo **não** é criado (deve existir e você precisa te
 | **2** | `02_modelo_churn.py` | Treina classificador de **churn** (`status = 'Cancelado'`), registra no UC e escora toda a base. | modelo `modelo_churn`, tabela `scores_churn` (prob + faixa de risco) |
 | **3** | `03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
 | **4** | `04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
-| **4.1** | `04.1_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
-| **5** | `05_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
-| **6** | `06_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
+| **5** | `05_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
+| **6** | `06_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
+| **7** | `07_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
 
 > **Parâmetros:** em cada notebook, ajuste os widgets `catalog` e `schema` antes de rodar.
-> A ordem **0 → 4 → 4.1 → 5 → 6** é obrigatória (cada etapa consome a saída da anterior); o
-> `genie_space_id` criado no 4.1 é preenchido nos widgets dos notebooks 05 e 06.
+> A ordem **0 → 4 → 5 → 6 → 7** é obrigatória (cada etapa consome a saída da anterior); o
+> `genie_space_id` criado no 5 é preenchido nos widgets dos notebooks 06 e 07.
 
 ---
 
@@ -80,18 +80,18 @@ ferramentas via *tool calling* (loop de até 5 rodadas):
 | `consultar_dados` | **Genie Space via MCP** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (06) quanto no serving (05). A ferramenta `consultar_dados` chama o
+lab — roda tanto no notebook (07) quanto no serving (06). A ferramenta `consultar_dados` chama o
 **MCP gerenciado do Databricks para Genie** (`/api/2.0/mcp/genie/{space_id}`): o agente envia a
 pergunta em linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O
-Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 05/06).
+Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 06/07).
 
 ### Genie Space para a ferramenta de dados
 
-1. Rode o notebook **`04.1_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
+1. Rode o notebook **`05_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
    e traz o passo a passo da UI + os textos prontos (tabelas, instruções, perguntas de exemplo).
-2. Siga as instruções do 04.1 para criar o Genie Space na UI apontando para as tabelas do schema.
+2. Siga as instruções do 05 para criar o Genie Space na UI apontando para as tabelas do schema.
 3. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
-4. Informe esse ID no widget `genie_space_id` dos notebooks **05** (deploy) e **06** (teste).
+4. Informe esse ID no widget `genie_space_id` dos notebooks **06** (deploy) e **07** (teste).
 
 > Como os dados são idênticos entre schemas (geração determinística), um **único Genie Space
 > compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo
@@ -123,14 +123,14 @@ guardrails e é registrada — o agente continua idêntico, mas a camada de GenA
 
 ---
 
-## Sobre o deploy do agente (notebook 05)
+## Sobre o deploy do agente (notebook 06)
 
 O `agents.deploy` publica o agente em Model Serving e, para isso, **cria uma service principal**
 para o endpoint. Requisitos: cota de service principals disponível na conta e os *resources*
 declarados (índices de Vector Search, endpoints de FM e o Genie Space).
 
 Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
-agente continua **totalmente funcional via notebook/job** — use o **notebook 06** para rodá-lo
+agente continua **totalmente funcional via notebook/job** — use o **notebook 07** para rodá-lo
 com suas próprias credenciais, sem criar endpoint. O modelo já fica registrado no Unity Catalog,
 então o deploy pode ser refeito quando houver cota.
 
