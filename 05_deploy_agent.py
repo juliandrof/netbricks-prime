@@ -11,8 +11,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "jsfws_catalog", "Catálogo")
+dbutils.widgets.text("catalog", "main", "Catálogo (deve existir)")
 dbutils.widgets.text("schema", "netbricks_prime", "Schema")
+dbutils.widgets.text("warehouse_id", "", "SQL Warehouse ID (vazio = auto)")
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
 
@@ -21,7 +22,17 @@ IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
 LLM = "databricks-claude-sonnet-5"
 EMB = "databricks-gte-large-en"
-WAREHOUSE_ID = "ddffc15f574e498c"
+
+# Warehouse: usa o informado no widget; senão descobre um disponível no workspace.
+WAREHOUSE_ID = dbutils.widgets.get("warehouse_id").strip()
+if not WAREHOUSE_ID:
+    from databricks.sdk import WorkspaceClient
+    _whs = list(WorkspaceClient().warehouses.list())
+    assert _whs, "Nenhum SQL warehouse disponível neste workspace."
+    _run = [w for w in _whs if str(getattr(w.state, "value", w.state)) == "RUNNING"]
+    WAREHOUSE_ID = (_run or _whs)[0].id
+print("SQL Warehouse:", WAREHOUSE_ID)
+
 AGENT_MODEL = f"{CATALOG}.{SCHEMA}.netbricks_agent"
 AGENT_ENDPOINT = "netbricks_agent"
 

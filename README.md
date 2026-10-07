@@ -1,12 +1,13 @@
 # 🎬 Netbricks Prime — Lab de Streaming no Databricks
 
-Lab fim-a-fim de uma plataforma de streaming fictícia (**Netbricks Prime**, da **XPTO Company**)
-sobre a Lakehouse. Cobre **geração de dados em escala → engenharia de atributos → dois modelos
-de ML (churn e propensão de upgrade) → Vector Search → um agente híbrido (Mosaic AI Agent
-Framework)**.
+Lab fim-a-fim de uma plataforma de streaming fictícia (**Netbricks Prime**) sobre a Lakehouse.
+Cobre **geração de dados em escala → engenharia de atributos → dois modelos de ML (churn e
+propensão de upgrade) → Vector Search → um agente híbrido (Mosaic AI Agent Framework)**, com
+a camada de GenAI governada por **Mosaic AI Gateway**.
 
 > Nenhum dado é real: usuários, títulos, e-mails (`@netbricksprime.com`) e artigos de ajuda são
-> todos sintéticos e gerados de forma determinística.
+> todos sintéticos e gerados de forma determinística. O lab roda em **qualquer workspace
+> Databricks** com os pré-requisitos abaixo — basta ajustar os parâmetros `catalog`/`schema`.
 
 ---
 
@@ -14,26 +15,35 @@ Framework)**.
 
 | Item | Valor |
 |------|-------|
-| Workspace | `fevm-jsfws` — https://fevm-jsfws.cloud.databricks.com |
-| Catálogo | `jsfws_catalog` |
-| Schema | `netbricks_prime` *(criado pelo notebook 0; o catálogo **não** é criado)* |
 | Compute | Serverless notebooks / jobs |
-| LLM | `databricks-claude-sonnet-5` |
-| Embeddings | `databricks-gte-large-en` |
-| Vector Search endpoint | `netbricks_vs_endpoint` |
+| Catálogo | parâmetro `catalog` (padrão `main`) — **deve existir** |
+| Schema | parâmetro `schema` (padrão `netbricks_prime`) — **criado pelo notebook 0** |
+| Vector Search endpoint | `netbricks_vs_endpoint` (criado pelo notebook 4) |
 
-Todos os notebooks têm **widgets `catalog` e `schema`** (padrão `jsfws_catalog` / `netbricks_prime`),
-então o lab pode ser recriado em qualquer catálogo existente apenas trocando os parâmetros.
+Todos os notebooks têm **widgets `catalog` e `schema`**, então o lab pode ser recriado em
+qualquer catálogo existente só trocando os parâmetros. O schema é criado automaticamente; o
+catálogo **não** é criado (informe um que você já tenha permissão de uso).
+
+### Modelos usados
+
+| Papel | Modelo | Onde entra |
+|-------|--------|------------|
+| LLM do agente | `databricks-claude-sonnet-5` (Foundation Model API, pay-per-token) | raciocínio e *tool calling* do agente híbrido |
+| Embeddings | `databricks-gte-large-en` (Foundation Model API) | geração de embeddings dos índices de Vector Search |
+| ML clássico | scikit-learn `HistGradientBoostingClassifier` | modelos de churn e de propensão de upgrade |
+
+> Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
+> **AI Gateway** é configurado (ver seção abaixo).
 
 ---
 
 ## Pré-requisitos
 
-- Acesso ao workspace com permissão de criar schema/tabelas no catálogo escolhido.
-- Serverless compute habilitado.
-- Vector Search habilitado no workspace.
-- Para o **deploy** do agente (notebook 05): cota de *service principals* disponível na conta
-  (ver [caveat](#-caveat-do-deploy-do-agente)).
+- Workspace Databricks com **Serverless compute** habilitado.
+- **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
+- **Vector Search** habilitado no workspace.
+- Acesso às **Foundation Model APIs** (`databricks-claude-sonnet-5`, `databricks-gte-large-en`).
+- Um **SQL Warehouse** (o agente descobre um automaticamente se nenhum ID for informado).
 
 ---
 
@@ -46,8 +56,8 @@ então o lab pode ser recriado em qualquer catálogo existente apenas trocando o
 | **2** | `02_modelo_churn.py` | Treina classificador de **churn** (`status = 'Cancelado'`), registra no UC e escora toda a base. | modelo `modelo_churn`, tabela `scores_churn` (prob + faixa de risco) |
 | **3** | `03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
 | **4** | `04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
-| **5** | `05_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` *(deploy — ver caveat)* |
-| **6** | `06_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem SP) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
+| **5** | `05_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
+| **6** | `06_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
 
 > **Parâmetros:** em cada notebook, ajuste os widgets `catalog` e `schema` antes de rodar.
 > A ordem **0 → 6** é obrigatória (cada etapa consome a saída da anterior).
@@ -66,30 +76,50 @@ ferramentas via *tool calling* (loop de até 5 rodadas):
 | `consultar_dados` | SQL parametrizado seguro | Métricas agregadas (títulos por gênero, usuários por plano, churn por plano, total de títulos) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (06) quanto no serving (05).
+lab — roda tanto no notebook (06) quanto no serving (05). O warehouse para `consultar_dados` é
+descoberto automaticamente; para fixar um, defina a variável de ambiente `WAREHOUSE_ID` (ou o
+widget no notebook 05).
 
 ---
 
-## ⚠️ Caveat do deploy do agente
+## 🛡️ Onde entra o Mosaic AI Gateway
 
-O deploy em Model Serving (notebook 05) pode falhar com:
+O **AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
+que o lab usa — principalmente o LLM do agente (`databricks-claude-sonnet-5`) e, se desejado, o
+endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o código do agente:
 
-```
-RESOURCE_EXHAUSTED: Cannot have more than 100000 users and service principals in one account.
-```
+- **Guardrails de segurança/PII** — detecção e mascaramento (ou bloqueio) de dados sensíveis em
+  prompts e respostas;
+- **Rate limiting** — limites de requisição por usuário/endpoint;
+- **Usage tracking & payload logging** — registro de todo o tráfego (inferência) em tabelas do
+  Unity Catalog para auditoria e análise de custo;
+- **Fallbacks** — roteamento para modelos alternativos.
 
-Isso é um **limite da conta compartilhada do FEVM**, não um problema de código: o `agents.deploy`
-precisa criar uma *service principal* para o endpoint, e a conta está no teto de 100k principais.
-O código do agente está **validado e funcionando** (notebook 06). Opções para publicar:
+**Como encaixar neste lab:** habilite o AI Gateway no endpoint de Foundation Model que o agente
+consome (`databricks-claude-sonnet-5`). Assim, cada chamada que o agente faz passa pelos
+guardrails e é registrada — o agente continua idêntico, mas a camada de GenAI fica governada.
 
-- tentar novamente mais tarde (conforme SPs forem liberadas na conta);
-- liberar SPs / solicitar aumento de cota (ação de admin da conta);
-- usar outro workspace/conta fora do limite;
-- enquanto isso, rodar o agente via notebook/job (como no notebook 06).
+> **Observação importante:** os guardrails do AI Gateway são configurados em endpoints de
+> *pay-per-token*, *provisioned throughput* ou *external model* — **não** no endpoint do agente
+> em si. Por isso a governança é aplicada ao **endpoint do LLM subjacente** que o agente chama,
+> e não ao endpoint `netbricks_agent`.
 
 ---
 
-## Objetos criados em `jsfws_catalog.netbricks_prime`
+## Sobre o deploy do agente (notebook 05)
+
+O `agents.deploy` publica o agente em Model Serving e, para isso, **cria uma service principal**
+para o endpoint. Requisitos: cota de service principals disponível na conta e os *resources*
+declarados (índices de Vector Search, endpoints de FM e um SQL warehouse).
+
+Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
+agente continua **totalmente funcional via notebook/job** — use o **notebook 06** para rodá-lo
+com suas próprias credenciais, sem criar endpoint. O modelo já fica registrado no Unity Catalog,
+então o deploy pode ser refeito quando houver cota.
+
+---
+
+## Objetos criados em `<catalog>.<schema>`
 
 **Tabelas:** `catalogo`, `usuarios`, `eventos_visualizacao`, `central_ajuda_kb`,
 `features_usuarios`, `scores_churn`, `scores_upgrade`
@@ -98,4 +128,4 @@ O código do agente está **validado e funcionando** (notebook 06). Opções par
 
 ---
 
-*Lab construído por um Field Engineer da Databricks para fins de demonstração.*
+*Lab de demonstração — plataforma e dados fictícios.*

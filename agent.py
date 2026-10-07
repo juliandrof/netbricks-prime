@@ -20,12 +20,13 @@ from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
 
 VS_ENDPOINT = os.environ.get("VS_ENDPOINT", "netbricks_vs_endpoint")
-IDX_CAT = os.environ.get("IDX_CAT", "jsfws_catalog.netbricks_prime.catalogo_index")
-IDX_AJU = os.environ.get("IDX_AJU", "jsfws_catalog.netbricks_prime.ajuda_index")
-LLM = os.environ.get("LLM_MODEL", "databricks-claude-sonnet-5")
-WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "ddffc15f574e498c")
-CATALOG = os.environ.get("CATALOG", "jsfws_catalog")
+CATALOG = os.environ.get("CATALOG", "main")
 SCHEMA = os.environ.get("SCHEMA", "netbricks_prime")
+IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
+IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
+LLM = os.environ.get("LLM_MODEL", "databricks-claude-sonnet-5")
+# Vazio = descobre automaticamente um SQL warehouse disponível no workspace.
+WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "")
 
 SYSTEM_PROMPT = (
     "Você é o assistente da Netbricks Prime, uma plataforma de streaming. Responda SEMPRE "
@@ -83,6 +84,7 @@ class NetbricksAgent(ChatAgent):
         self._llm = get_deploy_client("databricks")
         self._vsc = None
         self._w = None
+        self._wh_id = None
 
     @property
     def vsc(self):
@@ -116,13 +118,25 @@ class NetbricksAgent(ChatAgent):
                                      num_results=3).get("result", {}).get("data_array", []) or []
         return [{"topico": r[0], "conteudo": r[1]} for r in rows]
 
+    def _warehouse(self):
+        """Usa WAREHOUSE_ID se definido; senão descobre um warehouse disponível."""
+        if WAREHOUSE_ID:
+            return WAREHOUSE_ID
+        if self._wh_id is None:
+            whs = list(self.w.warehouses.list())
+            if not whs:
+                raise RuntimeError("Nenhum SQL warehouse disponível no workspace.")
+            running = [x for x in whs if str(getattr(x.state, "value", x.state)) == "RUNNING"]
+            self._wh_id = (running or whs)[0].id
+        return self._wh_id
+
     @mlflow.trace(span_type="TOOL")
     def _consultar_dados(self, metrica):
         sql = _QUERIES.get(metrica)
         if not sql:
             return {"erro": "métrica desconhecida"}
         r = self.w.statement_execution.execute_statement(
-            warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="30s")
+            warehouse_id=self._warehouse(), statement=sql, wait_timeout="30s")
         data = r.result.data_array if r.result else []
         cols = [c.name for c in r.manifest.schema.columns]
         return [dict(zip(cols, row)) for row in (data or [])]

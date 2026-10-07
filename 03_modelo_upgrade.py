@@ -17,7 +17,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "jsfws_catalog", "Catálogo")
+dbutils.widgets.text("catalog", "main", "Catálogo (deve existir)")
 dbutils.widgets.text("schema", "netbricks_prime", "Schema")
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
