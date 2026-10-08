@@ -17,8 +17,8 @@ a camada de GenAI governada por **Unity AI Gateway**.
 |------|-------|
 | Compute | Serverless notebooks / jobs |
 | Catálogo | `CATALOG` no `_config` (padrão `netbricks_prime`) — **deve existir** |
-| Schema | `SCHEMA` no `_config` (padrão `suas_iniciais_aqui`) — **criado pelo notebook 0** |
-| Vector Search endpoint | `netbricks_vs_<schema>` (criado pelo notebook 4; nome inclui o schema para evitar colisão entre labs no mesmo workspace) |
+| Schema | `SCHEMA` no `_config` (padrão `suas_iniciais_aqui`) — **criado na preparação** (`preparacao/00_gerar_dados`) |
+| Vector Search endpoint | `netbricks_vs_<schema>` (criado em `preparacao/04_vector_search`; nome inclui o schema para evitar colisão entre labs no mesmo workspace) |
 
 **Configuração centralizada:** catálogo e schema ficam em **um único lugar** — o notebook
 **`_config`**. Todos os notebooks (0–7) fazem `%run ./_config` no início e reaproveitam
@@ -42,7 +42,7 @@ precisa ter permissão de uso).
 > Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
 > **Unity AI Gateway** é configurado (ver seção abaixo).
 
-> **O LLM é um parâmetro (widget `llm`) nos notebooks 06 e 07.** O default é
+> **O LLM é um parâmetro (widget `llm`) nos notebooks 02 e 03.** O default é
 > `databricks-llama-4-maverick` — um modelo de chat com *tool calling* disponível por padrão.
 > Você pode trocar por qualquer endpoint de chat com *tool calling* em que tenha **EXECUTE**
 > (ex.: `databricks-gpt-5-2`, ou `databricks-claude-sonnet-5` — este exige EXECUTE em
@@ -66,26 +66,32 @@ precisa ter permissão de uso).
 
 | # | Notebook | O que faz | Saídas principais |
 |---|----------|-----------|-------------------|
-| **0** | `00_netbricks_prime_gerar_dados.py` | Gera toda a base de forma determinística e com **sinal comportamental** (engajamento latente governa plano, churn e volume de eventos). Cria o schema. | `catalogo` (10k títulos, PK + CDF), `usuarios` (120k), `eventos_visualizacao` (1M, particionado), `central_ajuda_kb` (12 artigos, PK + CDF) |
-| **1** | `01_feature_engineering.py` | Agrega eventos por usuário e junta com o perfil. | `features_usuarios` |
-| **2** | `02_modelo_churn.py` | Treina classificador de **churn** (`status = 'Cancelado'`), registra no UC e escora toda a base. | modelo `modelo_churn`, tabela `scores_churn` (prob + faixa de risco) |
-| **3** | `03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
-| **4** | `04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
-| **5** | `05_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
-| **6** | `06_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
-| **7** | `07_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
+| **0** | `00_preparar_ambiente.py` | **Orquestrador** — roda, em ordem, toda a fase de preparação (os 5 notebooks em `preparacao/`) via `dbutils.notebook.run`. | base de dados + modelos + índices (ver sub-passos) |
+| **1** | `01_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
+| **2** | `02_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
+| **3** | `03_testar_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
+
+**Fase de preparação (`preparacao/`)** — rodada pelo `00_preparar_ambiente.py` (ou individualmente, nesta ordem):
+
+| # | Notebook | O que faz | Saídas principais |
+|---|----------|-----------|-------------------|
+| **0** | `preparacao/00_gerar_dados.py` | Gera toda a base de forma determinística e com **sinal comportamental** (engajamento latente governa plano, churn e volume de eventos). Cria o schema. | `catalogo` (10k títulos, PK + CDF), `usuarios` (120k), `eventos_visualizacao` (1M, particionado), `central_ajuda_kb` (12 artigos, PK + CDF) |
+| **1** | `preparacao/01_feature_engineering.py` | Agrega eventos por usuário e junta com o perfil. | `features_usuarios` |
+| **2** | `preparacao/02_modelo_churn.py` | Treina classificador de **churn** (`status = 'Cancelado'`), registra no UC e escora toda a base. | modelo `modelo_churn`, tabela `scores_churn` (prob + faixa de risco) |
+| **3** | `preparacao/03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
+| **4** | `preparacao/04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
 
 > **Parâmetros:** ajuste `CATALOG`/`SCHEMA` **uma vez** no `_config` (todos os notebooks o
-> reaproveitam via `%run ./_config`). A ordem **0 → 4 → 5 → 6 → 7** é obrigatória (cada etapa
-> consome a saída da anterior); o `genie_space_id` criado no 5 é preenchido nos widgets dos
-> notebooks 06 e 07.
+> reaproveitam via `%run ./_config`; os de `preparacao/` usam `%run ../_config`). A ordem
+> **0 → 1 → 2 → 3** é obrigatória (cada etapa consome a saída da anterior); o `genie_space_id`
+> criado no **01** é preenchido nos widgets dos notebooks **02** e **03**.
 
 ---
 
 ## O agente híbrido (`agent.py`)
 
-`ChatAgent` do Mosaic AI Agent Framework. O próprio LLM (Claude Sonnet) escolhe entre 3
-ferramentas via *tool calling* (loop de até 5 rodadas):
+`ChatAgent` do Mosaic AI Agent Framework. O próprio LLM (por padrão `databricks-llama-4-maverick`)
+escolhe entre 3 ferramentas via *tool calling* (loop de até 5 rodadas):
 
 | Ferramenta | Tipo | Para quê |
 |------------|------|----------|
@@ -94,18 +100,18 @@ ferramentas via *tool calling* (loop de até 5 rodadas):
 | `consultar_dados` | **Genie Space via MCP** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (07) quanto no serving (06). A ferramenta `consultar_dados` chama o
+lab — roda tanto no notebook (03) quanto no serving (02). A ferramenta `consultar_dados` chama o
 **MCP gerenciado do Databricks para Genie** (`/api/2.0/mcp/genie/{space_id}`): o agente envia a
 pergunta em linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O
-Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 06/07).
+Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 02/03).
 
 ### Genie Space para a ferramenta de dados
 
-1. Rode o notebook **`05_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
+1. Rode o notebook **`01_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
    e traz o passo a passo da UI + os textos prontos (tabelas, instruções, perguntas de exemplo).
-2. Siga as instruções do 05 para criar o Genie Space na UI apontando para as tabelas do schema.
+2. Siga as instruções do 01 para criar o Genie Space na UI apontando para as tabelas do schema.
 3. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
-4. Informe esse ID no widget `genie_space_id` dos notebooks **06** (deploy) e **07** (teste).
+4. Informe esse ID no widget `genie_space_id` dos notebooks **02** (deploy) e **03** (teste).
 
 > Como os dados são idênticos entre schemas (geração determinística), um **único Genie Space
 > compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo
@@ -137,14 +143,14 @@ guardrails e é registrada — o agente continua idêntico, mas a camada de GenA
 
 ---
 
-## Sobre o deploy do agente (notebook 06)
+## Sobre o deploy do agente (notebook 02)
 
 O `agents.deploy` publica o agente em Model Serving e, para isso, **cria uma service principal**
 para o endpoint. Requisitos: cota de service principals disponível na conta e os *resources*
 declarados (índices de Vector Search, endpoints de FM e o Genie Space).
 
 Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
-agente continua **totalmente funcional via notebook/job** — use o **notebook 07** para rodá-lo
+agente continua **totalmente funcional via notebook/job** — use o **notebook 03** para rodá-lo
 com suas próprias credenciais, sem criar endpoint. O modelo já fica registrado no Unity Catalog,
 então o deploy pode ser refeito quando houver cota.
 

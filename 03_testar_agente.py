@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 07 · Teste do Agente Híbrido (local, sem deploy)
+# MAGIC # 03 · Teste do Agente Híbrido (local, sem deploy)
 # MAGIC Executa o `agent.py` com credenciais do notebook e valida as 3 ferramentas
 # MAGIC (a de dados usa o **Genie Space via MCP**).
 

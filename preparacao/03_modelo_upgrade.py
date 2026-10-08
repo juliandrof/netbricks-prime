@@ -1,10 +1,14 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02 · Modelo de Churn — Netbricks Prime
+# MAGIC # 03 · Modelo de Propensão de Upgrade — Netbricks Prime
 # MAGIC
-# MAGIC Prevê a probabilidade de um assinante **cancelar** (`status = 'Cancelado'`), a partir
-# MAGIC das features de engajamento + perfil. Treino com scikit-learn, rastreamento no MLflow,
-# MAGIC registro no Unity Catalog e **scoring** de toda a base.
+# MAGIC Prevê a propensão de um assinante estar em **plano pago** (Standard/Premium) a partir
+# MAGIC do comportamento de uso. O modelo é treinado em toda a base (alvo `is_pago`) e depois
+# MAGIC **aplicado aos usuários Free** — os de maior probabilidade são os **melhores alvos de
+# MAGIC upgrade** (parecem-se, no uso, com quem já é pagante).
+# MAGIC
+# MAGIC > Nota: `plano` NÃO entra como feature (é a base do alvo). Usamos apenas engajamento
+# MAGIC > e perfil.
 
 # COMMAND ----------
 
@@ -13,13 +17,13 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./_config
+# MAGIC %run ../_config
 
 # COMMAND ----------
 
 TBL_FEAT = f"{CATALOG}.{SCHEMA}.features_usuarios"
-TBL_SCORES = f"{CATALOG}.{SCHEMA}.scores_churn"
-MODELO_UC = f"{CATALOG}.{SCHEMA}.modelo_churn"
+TBL_SCORES = f"{CATALOG}.{SCHEMA}.scores_upgrade"
+MODELO_UC = f"{CATALOG}.{SCHEMA}.modelo_upgrade"
 
 # COMMAND ----------
 
@@ -35,18 +39,18 @@ from sklearn.preprocessing import OneHotEncoder
 mlflow.set_registry_uri("databricks-uc")
 
 pdf = spark.table(TBL_FEAT).toPandas()
-pdf["is_churn"] = (pdf["status"] == "Cancelado").astype(int)
+pdf["is_pago"] = pdf["plano"].isin(["Standard", "Premium"]).astype(int)
 
 NUM = ["total_eventos", "watch_total_min", "watch_medio_min", "pct_assistido_medio",
        "taxa_conclusao", "n_generos", "n_dispositivos", "recencia_dias", "dias_casa"]
-CAT = ["plano", "uf", "faixa_etaria", "dispositivo_principal"]  # plano é feature legítima p/ churn
+CAT = ["uf", "faixa_etaria", "dispositivo_principal"]  # SEM 'plano' (é a base do alvo)
 
 pdf[NUM] = pdf[NUM].astype("float64")  # evita Decimal (não serializável no MLflow)
 
 X = pdf[NUM + CAT]
-y = pdf["is_churn"]
+y = pdf["is_pago"]
 X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
-print(f"Treino: {len(X_tr):,} | Teste: {len(X_te):,} | Taxa de churn: {y.mean():.1%}")
+print(f"Treino: {len(X_tr):,} | Teste: {len(X_te):,} | Taxa pago: {y.mean():.1%}")
 
 # COMMAND ----------
 
@@ -56,7 +60,7 @@ pipe = Pipeline([("pre", pre),
                  ("clf", HistGradientBoostingClassifier(max_iter=200, learning_rate=0.1, random_state=42))])
 
 mlflow.sklearn.autolog(log_models=False)
-with mlflow.start_run(run_name="churn_histgb") as run:
+with mlflow.start_run(run_name="upgrade_histgb"):
     pipe.fit(X_tr, y_tr)
     proba_te = pipe.predict_proba(X_te)[:, 1]
     auc = roc_auc_score(y_te, proba_te)
@@ -74,33 +78,34 @@ print(f"✅ Modelo registrado em {MODELO_UC} | AUC={auc:.3f}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Scoring de toda a base
+# MAGIC ### Scoring: propensão de upgrade dos usuários FREE
 
 # COMMAND ----------
 
-pdf["prob_churn"] = pipe.predict_proba(X)[:, 1]
-pdf["faixa_risco"] = pd.cut(pdf["prob_churn"], bins=[-0.01, 0.3, 0.6, 1.01],
-                            labels=["Baixo", "Médio", "Alto"])
-scores = pdf[["user_id", "plano", "status", "prob_churn", "faixa_risco"]].copy()
-scores["prob_churn"] = scores["prob_churn"].round(4)
-scores["faixa_risco"] = scores["faixa_risco"].astype(str)
+pdf["prob_upgrade"] = pipe.predict_proba(X)[:, 1]
+free = pdf[pdf["plano"] == "Free"].copy()
+free["faixa_propensao"] = pd.cut(free["prob_upgrade"], bins=[-0.01, 0.3, 0.6, 1.01],
+                                 labels=["Baixa", "Média", "Alta"])
+scores = free[["user_id", "plano", "prob_upgrade", "faixa_propensao"]].copy()
+scores["prob_upgrade"] = scores["prob_upgrade"].round(4)
+scores["faixa_propensao"] = scores["faixa_propensao"].astype(str)
 
 (spark.createDataFrame(scores).write.format("delta").mode("overwrite")
    .option("overwriteSchema", "true").saveAsTable(TBL_SCORES))
-print(f"✅ Scores gravados em {TBL_SCORES}")
+print(f"✅ Scores (usuários Free) gravados em {TBL_SCORES}")
 display(spark.sql(f"""
-  SELECT faixa_risco, COUNT(*) usuarios, ROUND(AVG(prob_churn),3) prob_media
-  FROM {TBL_SCORES} GROUP BY faixa_risco ORDER BY prob_media DESC
+  SELECT faixa_propensao, COUNT(*) usuarios, ROUND(AVG(prob_upgrade),3) prob_media
+  FROM {TBL_SCORES} GROUP BY faixa_propensao ORDER BY prob_media DESC
 """))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Top clientes ATIVOS com maior risco de churn (alvos de retenção)
+# MAGIC ### Top usuários Free com maior propensão de upgrade (alvos de conversão)
 
 # COMMAND ----------
 
 display(spark.sql(f"""
-  SELECT user_id, plano, prob_churn FROM {TBL_SCORES}
-  WHERE status = 'Ativo' ORDER BY prob_churn DESC LIMIT 15
+  SELECT user_id, prob_upgrade FROM {TBL_SCORES}
+  ORDER BY prob_upgrade DESC LIMIT 15
 """))

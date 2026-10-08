@@ -23,7 +23,7 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./_config
+# MAGIC %run ../_config
 
 # COMMAND ----------
 
