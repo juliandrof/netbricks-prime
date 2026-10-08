@@ -17,7 +17,6 @@ from typing import Any, Optional
 
 import mlflow
 from databricks.sdk import WorkspaceClient
-from databricks.vector_search.client import VectorSearchClient
 from databricks_mcp import DatabricksMCPClient
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
@@ -77,62 +76,83 @@ def _texto(content) -> str:
     return "" if content is None else str(content)
 
 
+def _in_model_serving() -> bool:
+    """True quando rodando dentro de um endpoint de Model Serving (variáveis setadas pelo runtime)."""
+    v = (os.environ.get("IS_IN_DB_MODEL_SERVING_ENV")
+         or os.environ.get("IS_IN_DATABRICKS_MODEL_SERVING_ENV") or "")
+    return v.lower() == "true"
+
+
+def _user_workspace_client():
+    """Cliente OBO (on-behalf-of-user): chama o LLM com a credencial de QUEM invoca o agente.
+
+    Só o LLM precisa disso — ``databricks-llama-4-maverick`` é um Foundation Model pay-per-token
+    em ``system.ai`` e exige que o CHAMADOR tenha USE CATALOG on system. O service principal do
+    endpoint não tem; o usuário do lab tem. VS/embeddings/Genie continuam em credenciais de sistema
+    (resources declarados). Fora do serving (notebook 03), cai nas credenciais padrão do notebook."""
+    if _in_model_serving():
+        try:
+            from databricks_ai_bridge import ModelServingUserCredentials
+        except Exception:
+            from databricks.sdk.credentials_provider import ModelServingUserCredentials
+        return WorkspaceClient(credentials_strategy=ModelServingUserCredentials())
+    return WorkspaceClient()
+
+
 class NetbricksAgent(ChatAgent):
     def __init__(self):
-        self._vsc = None
         self._w = None
-        self._mcp = None
-        self._oai = None
-
-    @property
-    def vsc(self):
-        if self._vsc is None:
-            self._vsc = VectorSearchClient(disable_notice=True)
-        return self._vsc
+        self._uw = None
 
     @property
     def w(self):
-        # Credenciais do sistema (service principal do endpoint) — usadas por Vector Search e Genie,
-        # que são resources declarados e autorizados automaticamente no deploy.
+        # Credenciais de SISTEMA (service principal do endpoint): usadas por VS e Genie, que são
+        # resources declarados (SystemAuthPolicy) e autorizados automaticamente no deploy.
         if self._w is None:
             self._w = WorkspaceClient()
         return self._w
 
     @property
+    def user_w(self):
+        # Credenciais do USUÁRIO (OBO): usadas só pelo LLM. A estratégia resolve o token do
+        # invocador a cada request, então cachear o objeto cliente é ok.
+        if self._uw is None:
+            self._uw = _user_workspace_client()
+        return self._uw
+
+    @property
     def oai(self):
-        # Cliente OpenAI do serving usando as credenciais de sistema (service principal do endpoint).
-        # O LLM é um resource declarado (DatabricksServingEndpoint); o SP recebe CAN_QUERY no endpoint
-        # automaticamente e precisa de EXECUTE em system.ai.<modelo> (concedido no setup do lab).
-        if self._oai is None:
-            self._oai = self.w.serving_endpoints.get_open_ai_client()
-        return self._oai
+        # Cliente OpenAI do serving com credenciais do usuário (OBO) — necessário p/ o Foundation
+        # Model em system.ai. Reconstruído a cada acesso para usar o token do request atual.
+        return self.user_w.serving_endpoints.get_open_ai_client()
 
     @property
     def genie_mcp(self):
-        """Cliente MCP para o Genie Space gerenciado do Databricks."""
-        if self._mcp is None:
-            url = f"{self.w.config.host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}"
-            self._mcp = DatabricksMCPClient(server_url=url, workspace_client=self.w)
-        return self._mcp
+        """Cliente MCP para o Genie Space gerenciado do Databricks (credenciais de sistema)."""
+        url = f"{self.w.config.host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}"
+        return DatabricksMCPClient(server_url=url, workspace_client=self.w)
+
+    def _vs_query(self, index_name, columns, query_text, num_results, filters=None):
+        """Consulta um índice de Vector Search via SDK (credenciais de sistema)."""
+        kwargs = dict(index_name=index_name, columns=columns,
+                      query_text=query_text, num_results=num_results)
+        if filters:
+            kwargs["filters_json"] = json.dumps(filters)
+        resp = self.w.vector_search_indexes.query_index(**kwargs)
+        return (resp.result.data_array if resp.result else None) or []
 
     # ---- ferramentas ----
     @mlflow.trace(span_type="RETRIEVER")
     def _buscar_titulos(self, consulta, genero=None):
-        idx = self.vsc.get_index(VS_ENDPOINT, IDX_CAT)
-        kwargs = dict(query_text=consulta,
-                      columns=["titulo", "genero_principal", "ano", "nota_media", "sinopse"],
-                      num_results=6)
-        if genero:
-            kwargs["filters"] = {"genero_principal": genero}
-        rows = idx.similarity_search(**kwargs).get("result", {}).get("data_array", []) or []
+        rows = self._vs_query(
+            IDX_CAT, ["titulo", "genero_principal", "ano", "nota_media", "sinopse"],
+            consulta, 6, filters={"genero_principal": genero} if genero else None)
         return [{"titulo": r[0], "genero": r[1], "ano": r[2], "nota": r[3],
                  "sinopse": (r[4] or "")[:180]} for r in rows]
 
     @mlflow.trace(span_type="RETRIEVER")
     def _suporte(self, pergunta):
-        idx = self.vsc.get_index(VS_ENDPOINT, IDX_AJU)
-        rows = idx.similarity_search(query_text=pergunta, columns=["titulo", "conteudo"],
-                                     num_results=3).get("result", {}).get("data_array", []) or []
+        rows = self._vs_query(IDX_AJU, ["titulo", "conteudo"], pergunta, 3)
         return [{"topico": r[0], "conteudo": r[1]} for r in rows]
 
     @mlflow.trace(span_type="TOOL")

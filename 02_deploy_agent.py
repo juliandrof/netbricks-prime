@@ -1,12 +1,23 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 02 · Deploy do Agente Híbrido — Netbricks Prime
-# MAGIC Loga o `agent.py` (com os *resources* que ele acessa), registra no Unity Catalog e
-# MAGIC faz deploy em Model Serving. A ferramenta de dados usa um **Genie Space via MCP**.
+# MAGIC Loga o `agent.py`, registra no Unity Catalog e faz deploy em Model Serving.
+# MAGIC A ferramenta de dados usa um **Genie Space via MCP**.
+# MAGIC
+# MAGIC ## Autenticação híbrida (importante)
+# MAGIC - **Credenciais de sistema** (service principal do endpoint) para Vector Search, embeddings
+# MAGIC   e Genie — declarados como *resources* e autorizados automaticamente no deploy.
+# MAGIC - **On-behalf-of-user (OBO)** só para o **LLM**: `databricks-llama-4-maverick` é um Foundation
+# MAGIC   Model pay-per-token em `system.ai` e exige que **quem chama** tenha `USE CATALOG on system`.
+# MAGIC   O SP do endpoint não tem; o usuário do lab tem. Então o LLM é chamado como o usuário.
+# MAGIC
+# MAGIC > ⚠️ **Pré-requisito único (admin do workspace):** habilite o preview
+# MAGIC > **"Agent Framework: On-Behalf-Of-User Authorization"** em *(seu usuário) → Previews*.
+# MAGIC > Sem isso o Model Serving não encaminha o token do usuário e o LLM falha com 403.
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-agents databricks-sdk databricks-mcp openai
+# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-agents databricks-sdk databricks-mcp databricks-ai-bridge openai
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -17,9 +28,9 @@
 
 # CATALOG, SCHEMA e VS_ENDPOINT vêm do _config. Aqui só o que é específico do deploy.
 dbutils.widgets.text("genie_space_id", "", "Genie Space ID (obrigatório)")
-# Endpoint de LLM: precisa ser um Foundation Model (com tool calling) em que o SP do endpoint
-# tenha EXECUTE em system.ai. Default: databricks-llama-4-maverick. Troque se quiser outro
-# (ex.: databricks-gpt-5-2, databricks-claude-sonnet-5).
+# Endpoint de LLM: Foundation Model com tool calling. Chamado via OBO (como o usuário), então
+# NÃO precisa de EXECUTE em system.ai para o SP — basta o usuário do lab ter acesso ao modelo.
+# Default: databricks-llama-4-maverick. Troque se quiser (ex.: databricks-gpt-5-2, databricks-claude-sonnet-5).
 dbutils.widgets.text("llm", "databricks-llama-4-maverick", "Endpoint do LLM")
 GENIE_SPACE_ID = dbutils.widgets.get("genie_space_id").strip()
 
@@ -41,27 +52,26 @@ os.environ.update(ENV)
 # COMMAND ----------
 
 import mlflow
+from mlflow.models.auth_policy import AuthPolicy, SystemAuthPolicy, UserAuthPolicy
 from mlflow.models.resources import (DatabricksVectorSearchIndex, DatabricksServingEndpoint,
                                       DatabricksGenieSpace)
 from pkg_resources import get_distribution
 
 mlflow.set_registry_uri("databricks-uc")
 
-# AUTENTICAÇÃO POR CREDENCIAIS DE SISTEMA (service principal do endpoint):
-# os resources declarados abaixo são autorizados automaticamente no deploy —
-#   - Vector Search (índices catálogo/ajuda) e endpoint de embeddings
-#   - Genie Space (ferramenta de dados via MCP)
-#   - o endpoint do LLM (Foundation Model) → SP recebe CAN_QUERY.
-# OBS: para Foundation Models em system.ai, o SP também precisa de EXECUTE em
-# system.ai.<modelo> (ex.: databricks-llama-4-maverick). Isso é concedido no setup do lab
-# por um metastore admin — o auto-grant não delega privilégios de system.ai.
-resources = [
+# AUTENTICAÇÃO HÍBRIDA:
+#  - SystemAuthPolicy (resources): VS (índices catálogo/ajuda), embeddings e Genie usam as
+#    credenciais de sistema (SP do endpoint), autorizadas automaticamente no deploy.
+#  - UserAuthPolicy (api_scopes): o LLM é chamado via OBO (como o usuário). Declaramos só o
+#    escopo de serving — o token do usuário encaminhado é usado para o Foundation Model em system.ai.
+system_policy = SystemAuthPolicy(resources=[
     DatabricksVectorSearchIndex(index_name=IDX_CAT),
     DatabricksVectorSearchIndex(index_name=IDX_AJU),
     DatabricksServingEndpoint(endpoint_name=EMB),
-    DatabricksServingEndpoint(endpoint_name=LLM),
     DatabricksGenieSpace(genie_space_id=GENIE_SPACE_ID),
-]
+])
+user_policy = UserAuthPolicy(api_scopes=["serving.serving-endpoints"])
+auth_policy = AuthPolicy(system_auth_policy=system_policy, user_auth_policy=user_policy)
 input_example = {"messages": [{"role": "user", "content": "me recomenda uma ficção científica leve"}]}
 
 # COMMAND ----------
@@ -69,10 +79,11 @@ input_example = {"messages": [{"role": "user", "content": "me recomenda uma fic�
 with mlflow.start_run(run_name="netbricks_agent"):
     logged = mlflow.pyfunc.log_model(
         artifact_path="agent", python_model="agent.py",
-        input_example=input_example, resources=resources,
+        input_example=input_example, auth_policy=auth_policy,
         pip_requirements=[f"mlflow=={get_distribution('mlflow').version}",
                           f"databricks-vectorsearch=={get_distribution('databricks-vectorsearch').version}",
                           f"databricks-sdk=={get_distribution('databricks-sdk').version}",
+                          f"databricks-ai-bridge=={get_distribution('databricks-ai-bridge').version}",
                           f"databricks-mcp=={get_distribution('databricks-mcp').version}",
                           f"openai=={get_distribution('openai').version}"],
     )
