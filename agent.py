@@ -5,9 +5,9 @@ Três ferramentas, escolhidas pelo próprio LLM (tool calling):
   1. buscar_titulos   -> busca semântica no catálogo (Vector Search) = descoberta/recomendação
   2. suporte          -> RAG na central de ajuda (Vector Search)
   3. consultar_dados  -> perguntas em linguagem natural sobre os números da plataforma,
-                         respondidas por um **Genie Space** acessado via **MCP gerenciado**
-                         do Databricks (`/api/2.0/mcp/genie/{space_id}`). O Genie gera e executa
-                         o SQL com governança — o agente não monta SQL diretamente.
+                         respondidas por um **Genie Space** via a API REST do Genie (SDK,
+                         `w.genie`), chamado como o usuário (OBO). O Genie gera e executa o SQL
+                         com governança — o agente não monta SQL diretamente.
 
 Defaults já batem com os recursos do lab; informe o GENIE_SPACE_ID (env ou widget no deploy).
 """
@@ -17,7 +17,6 @@ from typing import Any, Optional
 
 import mlflow
 from databricks.sdk import WorkspaceClient
-from databricks_mcp import DatabricksMCPClient
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
 
@@ -106,8 +105,8 @@ class NetbricksAgent(ChatAgent):
 
     @property
     def w(self):
-        # Credenciais de SISTEMA (service principal do endpoint): usadas por VS e Genie, que são
-        # resources declarados (SystemAuthPolicy) e autorizados automaticamente no deploy.
+        # Credenciais de SISTEMA (service principal do endpoint): usadas pelo Vector Search,
+        # que são resources declarados (SystemAuthPolicy) e autorizados automaticamente no deploy.
         if self._w is None:
             self._w = WorkspaceClient()
         return self._w
@@ -125,12 +124,6 @@ class NetbricksAgent(ChatAgent):
         # Cliente OpenAI do serving com credenciais do usuário (OBO) — necessário p/ o Foundation
         # Model em system.ai. Reconstruído a cada acesso para usar o token do request atual.
         return self.user_w.serving_endpoints.get_open_ai_client()
-
-    @property
-    def genie_mcp(self):
-        """Cliente MCP para o Genie Space gerenciado do Databricks (credenciais de sistema)."""
-        url = f"{self.w.config.host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}"
-        return DatabricksMCPClient(server_url=url, workspace_client=self.w)
 
     def _vs_query(self, index_name, columns, query_text, num_results, filters=None):
         """Consulta um índice de Vector Search via SDK (credenciais de sistema)."""
@@ -157,12 +150,44 @@ class NetbricksAgent(ChatAgent):
 
     @mlflow.trace(span_type="TOOL")
     def _consultar_dados(self, pergunta):
-        """Encaminha a pergunta em linguagem natural ao Genie Space via MCP."""
+        """Encaminha a pergunta ao Genie Space via API REST do SDK, como o usuário (OBO).
+
+        O Genie gera e executa o SQL com governança. Usamos a API direta do SDK (``w.genie``)
+        em vez do MCP gerenciado por robustez — o cliente MCP no container de serving é sensível
+        a versão. O usuário do lab tem acesso às tabelas/warehouse do space; o SP do endpoint não,
+        por isso a chamada vai via ``user_w`` (requer o escopo ``dashboards.genie`` no deploy)."""
         if not GENIE_SPACE_ID:
             return {"erro": "GENIE_SPACE_ID não configurado — defina a variável de ambiente."}
-        res = self.genie_mcp.call_tool(f"query_space_{GENIE_SPACE_ID}", {"query": pergunta})
-        texto = "\n".join(getattr(c, "text", "") for c in (res.content or []) if getattr(c, "text", None))
-        return {"resposta": texto or "(sem resposta do Genie)"}
+        msg = self.user_w.genie.start_conversation_and_wait(GENIE_SPACE_ID, pergunta)
+        partes = []
+        for att in (msg.attachments or []):
+            texto = getattr(getattr(att, "text", None), "content", None)
+            if texto:
+                partes.append(texto)
+            if getattr(att, "query", None) is not None:
+                q = att.query
+                if getattr(q, "description", None):
+                    partes.append(q.description)
+                linhas = self._genie_rows(msg, att.attachment_id)
+                if linhas:
+                    partes.append(json.dumps(linhas, ensure_ascii=False))
+        return {"resposta": "\n".join(partes) if partes else "(sem resposta do Genie)"}
+
+    def _genie_rows(self, msg, attachment_id):
+        """Busca as linhas do resultado de um attachment de query do Genie (máx. 50 linhas)."""
+        try:
+            res = self.user_w.genie.get_message_attachment_query_result(
+                GENIE_SPACE_ID, msg.conversation_id, msg.id, attachment_id)
+            sr = res.statement_response
+            if not (sr and sr.result and sr.result.data_array):
+                return None
+            cols = []
+            if sr.manifest and sr.manifest.schema and sr.manifest.schema.columns:
+                cols = [c.name for c in sr.manifest.schema.columns]
+            linhas = sr.result.data_array[:50]
+            return {"colunas": cols, "linhas": linhas} if cols else {"linhas": linhas}
+        except Exception as e:
+            return {"erro_resultado": str(e)[:200]}
 
     def _exec_tool(self, name, args):
         try:
