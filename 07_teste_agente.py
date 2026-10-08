@@ -6,19 +6,26 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk databricks-mcp
+# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk databricks-mcp openai
 # MAGIC %restart_python
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo")
-dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema")
+# MAGIC %run ./_config
+
+# COMMAND ----------
+
+# CATALOG, SCHEMA e VS_ENDPOINT vêm do _config. Aqui só o que é específico do teste.
 dbutils.widgets.text("genie_space_id", "", "Genie Space ID")
+# Use o mesmo LLM do deploy (o endpoint/SP precisa ter EXECUTE nesse Foundation Model).
+dbutils.widgets.text("llm", "databricks-llama-4-maverick", "Endpoint do LLM")
 
 import os
-os.environ["CATALOG"] = dbutils.widgets.get("catalog").strip()
-os.environ["SCHEMA"] = dbutils.widgets.get("schema").strip()
+os.environ["CATALOG"] = CATALOG
+os.environ["SCHEMA"] = SCHEMA
+os.environ["VS_ENDPOINT"] = VS_ENDPOINT
 os.environ["GENIE_SPACE_ID"] = dbutils.widgets.get("genie_space_id").strip()
+os.environ["LLM_MODEL"] = dbutils.widgets.get("llm").strip()
 
 # COMMAND ----------
 

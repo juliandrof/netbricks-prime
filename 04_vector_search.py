@@ -12,12 +12,11 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo (deve existir)")
-dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema")
-CATALOG = dbutils.widgets.get("catalog").strip()
-SCHEMA = dbutils.widgets.get("schema").strip()
+# MAGIC %run ./_config
 
-VS_ENDPOINT = f"netbricks_vs_{SCHEMA}"  # endpoint por schema (evita colisão entre labs)
+# COMMAND ----------
+
+# CATALOG, SCHEMA e VS_ENDPOINT vêm do _config.
 EMB = "databricks-gte-large-en"
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"

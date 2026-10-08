@@ -23,14 +23,15 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo (deve existir)")
-dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema (será criado)")
+# MAGIC %run ./_config
+
+# COMMAND ----------
+
+# CATALOG e SCHEMA vêm do _config (edite lá). Aqui só os volumes de dados deste notebook.
 dbutils.widgets.text("n_usuarios", "120000", "Qtd. usuários")
 dbutils.widgets.text("n_titulos", "10000", "Qtd. títulos")
 dbutils.widgets.text("n_eventos", "1000000", "Qtd. eventos de visualização")
 
-CATALOG = dbutils.widgets.get("catalog").strip()
-SCHEMA = dbutils.widgets.get("schema").strip()
 N_USERS = int(dbutils.widgets.get("n_usuarios"))
 N_TITLES = int(dbutils.widgets.get("n_titulos"))
 N_EVENTS = int(dbutils.widgets.get("n_eventos"))

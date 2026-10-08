@@ -17,10 +17,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo (deve existir)")
-dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema")
-CATALOG = dbutils.widgets.get("catalog").strip()
-SCHEMA = dbutils.widgets.get("schema").strip()
+# MAGIC %run ./_config
+
+# COMMAND ----------
 
 TBL_FEAT = f"{CATALOG}.{SCHEMA}.features_usuarios"
 TBL_SCORES = f"{CATALOG}.{SCHEMA}.scores_upgrade"

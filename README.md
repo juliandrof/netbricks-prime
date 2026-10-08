@@ -7,7 +7,7 @@ a camada de GenAI governada por **Unity AI Gateway**.
 
 > Nenhum dado é real: usuários, títulos, e-mails (`@netbricksprime.com`) e artigos de ajuda são
 > todos sintéticos e gerados de forma determinística. O lab roda em **qualquer workspace
-> Databricks** com os pré-requisitos abaixo — basta ajustar os parâmetros `catalog`/`schema`.
+> Databricks** com os pré-requisitos abaixo — basta ajustar `catalog`/`schema` no `_config`.
 
 ---
 
@@ -16,26 +16,38 @@ a camada de GenAI governada por **Unity AI Gateway**.
 | Item | Valor |
 |------|-------|
 | Compute | Serverless notebooks / jobs |
-| Catálogo | parâmetro `catalog` (padrão `netbricks_prime`) — **deve existir** |
-| Schema | parâmetro `schema` (padrão `suas_iniciais_aqui`) — **criado pelo notebook 0** |
+| Catálogo | `CATALOG` no `_config` (padrão `netbricks_prime`) — **deve existir** |
+| Schema | `SCHEMA` no `_config` (padrão `suas_iniciais_aqui`) — **criado pelo notebook 0** |
 | Vector Search endpoint | `netbricks_vs_<schema>` (criado pelo notebook 4; nome inclui o schema para evitar colisão entre labs no mesmo workspace) |
 
-Todos os notebooks têm **widgets `catalog` e `schema`**. Em um hands-on com várias pessoas no
-mesmo workspace, o catálogo `netbricks_prime` é compartilhado e **cada participante troca o
-schema `suas_iniciais_aqui` pelas suas próprias iniciais** — assim tabelas, modelos e o endpoint
-de Vector Search (`netbricks_vs_<schema>`) ficam isolados por pessoa. O schema é criado
-automaticamente; o catálogo **não** é criado (deve existir e você precisa ter permissão de uso).
+**Configuração centralizada:** catálogo e schema ficam em **um único lugar** — o notebook
+**`_config`**. Todos os notebooks (0–7) fazem `%run ./_config` no início e reaproveitam
+`CATALOG`, `SCHEMA` e `VS_ENDPOINT`. Você edita o `_config` **uma vez** e não precisa repetir em
+cada notebook. Em um hands-on com várias pessoas no mesmo workspace, o catálogo `netbricks_prime`
+é compartilhado e **cada participante troca o `SCHEMA` pelas suas próprias iniciais** — assim
+tabelas, modelos e o endpoint de Vector Search (`netbricks_vs_<schema>`) ficam isolados por
+pessoa. O schema é criado automaticamente; o catálogo **não** é criado (deve existir e você
+precisa ter permissão de uso).
+
+> ⚠️ O `_config` precisa estar **na mesma pasta** dos notebooks (o `%run ./_config` é relativo).
 
 ### Modelos usados
 
 | Papel | Modelo | Onde entra |
 |-------|--------|------------|
-| LLM do agente | `databricks-claude-sonnet-5` (Foundation Model API, pay-per-token) | raciocínio e *tool calling* do agente híbrido |
+| LLM do agente | `databricks-llama-4-maverick` (Foundation Model API) — **parametrizável** | raciocínio e *tool calling* do agente híbrido |
 | Embeddings | `databricks-gte-large-en` (Foundation Model API) | geração de embeddings dos índices de Vector Search |
 | ML clássico | scikit-learn `HistGradientBoostingClassifier` | modelos de churn e de propensão de upgrade |
 
 > Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
 > **Unity AI Gateway** é configurado (ver seção abaixo).
+
+> **O LLM é um parâmetro (widget `llm`) nos notebooks 06 e 07.** O default é
+> `databricks-llama-4-maverick` — um modelo de chat com *tool calling* disponível por padrão.
+> Você pode trocar por qualquer endpoint de chat com *tool calling* em que tenha **EXECUTE**
+> (ex.: `databricks-gpt-5-2`, ou `databricks-claude-sonnet-5` — este exige EXECUTE em
+> `system.ai.databricks-claude-sonnet-5`, caso contrário o deploy falha com `403 PERMISSION_DENIED`).
+> O agente usa o valor via a variável de ambiente `LLM_MODEL`.
 
 ---
 
@@ -44,7 +56,8 @@ automaticamente; o catálogo **não** é criado (deve existir e você precisa te
 - Workspace Databricks com **Serverless compute** habilitado.
 - **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
 - **Vector Search** habilitado no workspace.
-- Acesso às **Foundation Model APIs** (`databricks-claude-sonnet-5`, `databricks-gte-large-en`).
+- Acesso às **Foundation Model APIs** com **EXECUTE** no endpoint de LLM escolhido (widget `llm`;
+  default `databricks-llama-4-maverick`) e no de embeddings (`databricks-gte-large-en`).
 - Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consome via MCP.
 
 ---
@@ -62,9 +75,10 @@ automaticamente; o catálogo **não** é criado (deve existir e você precisa te
 | **6** | `06_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
 | **7** | `07_teste_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
 
-> **Parâmetros:** em cada notebook, ajuste os widgets `catalog` e `schema` antes de rodar.
-> A ordem **0 → 4 → 5 → 6 → 7** é obrigatória (cada etapa consome a saída da anterior); o
-> `genie_space_id` criado no 5 é preenchido nos widgets dos notebooks 06 e 07.
+> **Parâmetros:** ajuste `CATALOG`/`SCHEMA` **uma vez** no `_config` (todos os notebooks o
+> reaproveitam via `%run ./_config`). A ordem **0 → 4 → 5 → 6 → 7** é obrigatória (cada etapa
+> consome a saída da anterior); o `genie_space_id` criado no 5 é preenchido nos widgets dos
+> notebooks 06 e 07.
 
 ---
 

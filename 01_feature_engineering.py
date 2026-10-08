@@ -8,10 +8,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "netbricks_prime", "Catálogo (deve existir)")
-dbutils.widgets.text("schema", "suas_iniciais_aqui", "Schema")
-CATALOG = dbutils.widgets.get("catalog").strip()
-SCHEMA = dbutils.widgets.get("schema").strip()
+# MAGIC %run ./_config
+
+# COMMAND ----------
 
 TBL_USR = f"{CATALOG}.{SCHEMA}.usuarios"
 TBL_EVT = f"{CATALOG}.{SCHEMA}.eventos_visualizacao"

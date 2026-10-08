@@ -19,7 +19,6 @@ import mlflow
 from databricks.sdk import WorkspaceClient
 from databricks.vector_search.client import VectorSearchClient
 from databricks_mcp import DatabricksMCPClient
-from mlflow.deployments import get_deploy_client
 from mlflow.pyfunc import ChatAgent
 from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
 
@@ -28,7 +27,7 @@ SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
 VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
-LLM = os.environ.get("LLM_MODEL", "databricks-claude-sonnet-5")
+LLM = os.environ.get("LLM_MODEL", "databricks-llama-4-maverick")
 # ID do Genie Space usado pela ferramenta consultar_dados (via MCP). Obrigatório para essa tool.
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 
@@ -80,10 +79,10 @@ def _texto(content) -> str:
 
 class NetbricksAgent(ChatAgent):
     def __init__(self):
-        self._llm = get_deploy_client("databricks")
         self._vsc = None
         self._w = None
         self._mcp = None
+        self._oai = None
 
     @property
     def vsc(self):
@@ -93,9 +92,20 @@ class NetbricksAgent(ChatAgent):
 
     @property
     def w(self):
+        # Credenciais do sistema (service principal do endpoint) — usadas por Vector Search e Genie,
+        # que são resources declarados e autorizados automaticamente no deploy.
         if self._w is None:
             self._w = WorkspaceClient()
         return self._w
+
+    @property
+    def oai(self):
+        # Cliente OpenAI do serving usando as credenciais de sistema (service principal do endpoint).
+        # O LLM é um resource declarado (DatabricksServingEndpoint); o SP recebe CAN_QUERY no endpoint
+        # automaticamente e precisa de EXECUTE em system.ai.<modelo> (concedido no setup do lab).
+        if self._oai is None:
+            self._oai = self.w.serving_endpoints.get_open_ai_client()
+        return self._oai
 
     @property
     def genie_mcp(self):
@@ -154,22 +164,27 @@ class NetbricksAgent(ChatAgent):
 
         final = ""
         for _ in range(5):  # limite de rodadas de tool calling
-            resp = self._llm.predict(endpoint=LLM,
-                                     inputs={"messages": msgs, "tools": TOOLS, "max_tokens": 1024})
-            msg = resp["choices"][0]["message"]
-            tool_calls = msg.get("tool_calls")
-            if not tool_calls:
-                final = _texto(msg.get("content"))
+            resp = self.oai.chat.completions.create(
+                model=LLM, messages=msgs, tools=TOOLS, max_tokens=1024)
+            msg = resp.choices[0].message
+            if not msg.tool_calls:
+                final = msg.content or ""
                 break
-            msgs.append(msg)  # preserva os tool_calls
-            for tc in tool_calls:
-                fn = tc["function"]["name"]
+            # preserva a mensagem do assistant com os tool_calls (como dict, p/ a próxima rodada)
+            msgs.append({
+                "role": "assistant", "content": msg.content or "",
+                "tool_calls": [{"id": tc.id, "type": "function",
+                                "function": {"name": tc.function.name,
+                                             "arguments": tc.function.arguments}}
+                               for tc in msg.tool_calls],
+            })
+            for tc in msg.tool_calls:
                 try:
-                    args = json.loads(tc["function"].get("arguments") or "{}")
+                    args = json.loads(tc.function.arguments or "{}")
                 except Exception:
                     args = {}
-                result = self._exec_tool(fn, args)
-                msgs.append({"role": "tool", "tool_call_id": tc["id"],
+                result = self._exec_tool(tc.function.name, args)
+                msgs.append({"role": "tool", "tool_call_id": tc.id,
                              "content": json.dumps(result, ensure_ascii=False)})
 
         return ChatAgentResponse(
