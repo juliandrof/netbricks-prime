@@ -83,13 +83,11 @@ def _in_model_serving() -> bool:
 
 
 def _user_workspace_client():
-    """Cliente OBO (on-behalf-of-user): chama LLM e Genie com a credencial de QUEM invoca o agente.
+    """Cliente OBO (on-behalf-of-user): chama LLM e Genie com a credencial de quem invoca o agente.
 
-    O LLM (``databricks-llama-4-maverick``) é um Foundation Model pay-per-token em ``system.ai`` e
-    exige que o CHAMADOR tenha USE CATALOG on system; o Genie executa o SQL como o usuário, com a
-    governança dele sobre as tabelas. O service principal do endpoint não tem nenhum dos dois; o
-    usuário do lab tem. VS/embeddings continuam em credenciais de sistema (resources declarados).
-    Fora do serving (notebook 03), cai nas credenciais padrão do notebook."""
+    No serving, resolve o token do usuário via ``ModelServingUserCredentials``; fora do serving
+    (notebook 03), usa as credenciais padrão do notebook. VS e embeddings seguem em credenciais de
+    sistema (resources declarados)."""
     if _in_model_serving():
         try:
             from databricks_ai_bridge import ModelServingUserCredentials
@@ -122,8 +120,8 @@ class NetbricksAgent(ChatAgent):
 
     @property
     def oai(self):
-        # Cliente OpenAI do serving com credenciais do usuário (OBO) — necessário p/ o Foundation
-        # Model em system.ai. Reconstruído a cada acesso para usar o token do request atual.
+        # Cliente OpenAI do serving com credenciais do usuário (OBO). Reconstruído a cada acesso
+        # para usar o token do request atual.
         return self.user_w.serving_endpoints.get_open_ai_client()
 
     def _vs_query(self, index_name, columns, query_text, num_results, filters=None):
@@ -153,10 +151,8 @@ class NetbricksAgent(ChatAgent):
     def _consultar_dados(self, pergunta):
         """Encaminha a pergunta ao Genie Space via API REST do SDK, como o usuário (OBO).
 
-        O Genie gera e executa o SQL com governança. Usamos a API direta do SDK (``w.genie``)
-        em vez do MCP gerenciado por robustez — o cliente MCP no container de serving é sensível
-        a versão. O usuário do lab tem acesso às tabelas/warehouse do space; o SP do endpoint não,
-        por isso a chamada vai via ``user_w`` (requer o escopo ``dashboards.genie`` no deploy)."""
+        O Genie gera e executa o SQL com governança — o agente não monta SQL. Requer o escopo
+        ``dashboards.genie`` no deploy."""
         if not GENIE_SPACE_ID:
             return {"erro": "GENIE_SPACE_ID não configurado — defina a variável de ambiente."}
         msg = self.user_w.genie.start_conversation_and_wait(GENIE_SPACE_ID, pergunta)

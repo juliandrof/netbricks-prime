@@ -82,8 +82,7 @@ precisa ter permissão de uso).
   escolhido (widget `llm`; default `databricks-llama-4-maverick`), pois ele é chamado via OBO; o
   endpoint de embeddings (`databricks-gte-large-en`) é usado com credenciais de sistema.
 - **Preview "Agent Framework: On-Behalf-Of-User Authorization" habilitado** pelo admin do workspace
-  (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário. Sem
-  ele o deploy conclui, mas o LLM falha com `403` em tempo de execução.
+  (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário.
 - Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consulta via API REST do Genie (SDK), como o usuário (OBO).
 
 ---
@@ -137,15 +136,12 @@ O agente combina dois modos de credencial:
 
 - **Credenciais de sistema** (service principal do endpoint, via *resources* no deploy): usadas
   pelo **Vector Search** (`buscar_titulos`, `suporte`) e pelo endpoint de **embeddings**.
-- **On-behalf-of-user (OBO)**: usadas pelo **LLM** e pelo **Genie** (`consultar_dados`). O LLM é um
-  Foundation Model em `system.ai` (pay-per-token) que exige que **quem chama** tenha `USE CATALOG on
-  system`; o Genie executa o SQL como o usuário, com a governança dele sobre as tabelas. O service
-  principal do endpoint não tem nenhum dos dois — o usuário do lab tem. No deploy isso aparece como
+- **On-behalf-of-user (OBO)**: usadas pelo **LLM** e pelo **Genie** (`consultar_dados`), que são
+  chamados como o usuário que invoca o agente. No deploy isso aparece como
   `UserAuthPolicy(api_scopes=["serving.serving-endpoints", "dashboards.genie"])`.
 
 > ⚠️ **Pré-requisito (admin):** habilite o preview **"Agent Framework: On-Behalf-Of-User
-> Authorization"** antes do deploy — sem ele o Model Serving não encaminha o token do usuário e o
-> LLM falha com `403`.
+> Authorization"** antes do deploy, para o Model Serving encaminhar o token do usuário.
 
 ### Genie Space para a ferramenta de dados
 

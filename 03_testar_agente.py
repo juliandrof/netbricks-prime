@@ -17,7 +17,7 @@
 
 # CATALOG, SCHEMA e VS_ENDPOINT vêm do _config. Aqui só o que é específico do teste.
 dbutils.widgets.text("genie_space_id", "", "Genie Space ID")
-# Use o mesmo LLM do deploy (o endpoint/SP precisa ter EXECUTE nesse Foundation Model).
+# Use o mesmo LLM do deploy.
 dbutils.widgets.text("llm", "databricks-llama-4-maverick", "Endpoint do LLM")
 
 import os
