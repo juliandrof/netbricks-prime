@@ -26,7 +26,7 @@ VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
 LLM = os.environ.get("LLM_MODEL", "databricks-llama-4-maverick")
-# ID do Genie Space usado pela ferramenta consultar_dados (via MCP). Obrigatório para essa tool.
+# ID do Genie Space usado pela ferramenta consultar_dados (via API REST do SDK). Obrigatório p/ essa tool.
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 
 SYSTEM_PROMPT = (
@@ -83,12 +83,13 @@ def _in_model_serving() -> bool:
 
 
 def _user_workspace_client():
-    """Cliente OBO (on-behalf-of-user): chama o LLM com a credencial de QUEM invoca o agente.
+    """Cliente OBO (on-behalf-of-user): chama LLM e Genie com a credencial de QUEM invoca o agente.
 
-    Só o LLM precisa disso — ``databricks-llama-4-maverick`` é um Foundation Model pay-per-token
-    em ``system.ai`` e exige que o CHAMADOR tenha USE CATALOG on system. O service principal do
-    endpoint não tem; o usuário do lab tem. VS/embeddings/Genie continuam em credenciais de sistema
-    (resources declarados). Fora do serving (notebook 03), cai nas credenciais padrão do notebook."""
+    O LLM (``databricks-llama-4-maverick``) é um Foundation Model pay-per-token em ``system.ai`` e
+    exige que o CHAMADOR tenha USE CATALOG on system; o Genie executa o SQL como o usuário, com a
+    governança dele sobre as tabelas. O service principal do endpoint não tem nenhum dos dois; o
+    usuário do lab tem. VS/embeddings continuam em credenciais de sistema (resources declarados).
+    Fora do serving (notebook 03), cai nas credenciais padrão do notebook."""
     if _in_model_serving():
         try:
             from databricks_ai_bridge import ModelServingUserCredentials
@@ -113,8 +114,8 @@ class NetbricksAgent(ChatAgent):
 
     @property
     def user_w(self):
-        # Credenciais do USUÁRIO (OBO): usadas só pelo LLM. A estratégia resolve o token do
-        # invocador a cada request, então cachear o objeto cliente é ok.
+        # Credenciais do USUÁRIO (OBO): usadas pelo LLM e pelo Genie. A estratégia resolve o token
+        # do invocador a cada request, então cachear o objeto cliente é ok.
         if self._uw is None:
             self._uw = _user_workspace_client()
         return self._uw

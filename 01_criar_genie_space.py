@@ -3,7 +3,7 @@
 # MAGIC # 01 · Criar o Genie Space (ferramenta de dados do agente)
 # MAGIC
 # MAGIC A ferramenta `consultar_dados` do agente (notebooks 02/03) responde perguntas sobre os
-# MAGIC **números da plataforma** chamando um **Genie Space via MCP gerenciado** do Databricks.
+# MAGIC **números da plataforma** consultando um **Genie Space pela API REST do SDK** (como o usuário, via OBO).
 # MAGIC Este notebook prepara os dados e traz o **passo a passo** para criar esse Genie Space na UI.
 # MAGIC
 # MAGIC > O Genie Space é criado **pela interface** (não há criação confiável por API). Este notebook

@@ -2,11 +2,11 @@
 # MAGIC %md
 # MAGIC # 03 · Teste do Agente Híbrido (local, sem deploy)
 # MAGIC Executa o `agent.py` com credenciais do notebook e valida as 3 ferramentas
-# MAGIC (a de dados usa o **Genie Space via MCP**).
+# MAGIC (a de dados usa o **Genie Space via API REST do SDK**).
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk databricks-mcp openai
+# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-sdk databricks-ai-bridge openai
 # MAGIC %restart_python
 
 # COMMAND ----------

@@ -11,6 +11,27 @@ a camada de GenAI governada por **Unity AI Gateway**.
 
 ---
 
+## Apresentadores
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/juliandrof/workshop-eneva/main/images/juliandro_circle.png" width="150"/><br>
+      <strong>Juliandro Figueiró</strong><br>
+      <em>Sr. Solutions Architect</em><br>
+      <em>Databricks</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/juliandrof/workshop-eneva/main/images/jean_circle.png" width="150"/><br>
+      <strong>Jean Ertzogue</strong><br>
+      <em>Account Executive</em><br>
+      <em>Databricks</em>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## Ambiente
 
 | Item | Valor |
@@ -44,10 +65,11 @@ precisa ter permissão de uso).
 
 > **O LLM é um parâmetro (widget `llm`) nos notebooks 02 e 03.** O default é
 > `databricks-llama-4-maverick` — um modelo de chat com *tool calling* disponível por padrão.
-> Você pode trocar por qualquer endpoint de chat com *tool calling* em que tenha **EXECUTE**
-> (ex.: `databricks-gpt-5-2`, ou `databricks-claude-sonnet-5` — este exige EXECUTE em
-> `system.ai.databricks-claude-sonnet-5`, caso contrário o deploy falha com `403 PERMISSION_DENIED`).
-> O agente usa o valor via a variável de ambiente `LLM_MODEL`.
+> Como o LLM é chamado **via OBO (on-behalf-of-user)**, quem precisa de acesso ao Foundation Model
+> é o **usuário** que invoca o agente — não o service principal do endpoint. Você pode trocar por
+> qualquer endpoint de chat com *tool calling* a que o usuário do lab tenha acesso (ex.:
+> `databricks-gpt-5-2`, `databricks-claude-sonnet-5`). O agente usa o valor via a variável de
+> ambiente `LLM_MODEL`.
 
 ---
 
@@ -56,9 +78,13 @@ precisa ter permissão de uso).
 - Workspace Databricks com **Serverless compute** habilitado.
 - **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
 - **Vector Search** habilitado no workspace.
-- Acesso às **Foundation Model APIs** com **EXECUTE** no endpoint de LLM escolhido (widget `llm`;
-  default `databricks-llama-4-maverick`) e no de embeddings (`databricks-gte-large-en`).
-- Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consome via MCP.
+- Acesso às **Foundation Model APIs**: o **usuário** do lab precisa de acesso ao endpoint de LLM
+  escolhido (widget `llm`; default `databricks-llama-4-maverick`), pois ele é chamado via OBO; o
+  endpoint de embeddings (`databricks-gte-large-en`) é usado com credenciais de sistema.
+- **Preview "Agent Framework: On-Behalf-Of-User Authorization" habilitado** pelo admin do workspace
+  (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário. Sem
+  ele o deploy conclui, mas o LLM falha com `403` em tempo de execução.
+- Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consulta via API REST do Genie (SDK), como o usuário (OBO).
 
 ---
 
@@ -97,13 +123,29 @@ escolhe entre 3 ferramentas via *tool calling* (loop de até 5 rodadas):
 |------------|------|----------|
 | `buscar_titulos` | Vector Search (`catalogo_index`) | Descoberta/recomendação por tema ou clima |
 | `suporte` | RAG (`ajuda_index`) | Dúvidas de conta/plano/cobrança/cancelamento |
-| `consultar_dados` | **Genie Space via MCP** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
+| `consultar_dados` | **Genie Space (API REST, via OBO)** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (03) quanto no serving (02). A ferramenta `consultar_dados` chama o
-**MCP gerenciado do Databricks para Genie** (`/api/2.0/mcp/genie/{space_id}`): o agente envia a
-pergunta em linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O
-Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 02/03).
+lab — roda tanto no notebook (03) quanto no serving (02). A ferramenta `consultar_dados` usa a
+**API REST do Genie via SDK** (`w.genie.start_conversation_and_wait`): o agente envia a pergunta em
+linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O Genie Space
+usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 02/03).
+
+### Autenticação híbrida (sistema + OBO)
+
+O agente combina dois modos de credencial:
+
+- **Credenciais de sistema** (service principal do endpoint, via *resources* no deploy): usadas
+  pelo **Vector Search** (`buscar_titulos`, `suporte`) e pelo endpoint de **embeddings**.
+- **On-behalf-of-user (OBO)**: usadas pelo **LLM** e pelo **Genie** (`consultar_dados`). O LLM é um
+  Foundation Model em `system.ai` (pay-per-token) que exige que **quem chama** tenha `USE CATALOG on
+  system`; o Genie executa o SQL como o usuário, com a governança dele sobre as tabelas. O service
+  principal do endpoint não tem nenhum dos dois — o usuário do lab tem. No deploy isso aparece como
+  `UserAuthPolicy(api_scopes=["serving.serving-endpoints", "dashboards.genie"])`.
+
+> ⚠️ **Pré-requisito (admin):** habilite o preview **"Agent Framework: On-Behalf-Of-User
+> Authorization"** antes do deploy — sem ele o Model Serving não encaminha o token do usuário e o
+> LLM falha com `403`.
 
 ### Genie Space para a ferramenta de dados
 
@@ -122,7 +164,7 @@ Genie Space usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widge
 ## 🛡️ Onde entra o Unity AI Gateway
 
 O **Unity AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
-que o lab usa — principalmente o LLM do agente (`databricks-claude-sonnet-5`) e, se desejado, o
+que o lab usa — principalmente o LLM do agente (`databricks-llama-4-maverick`) e, se desejado, o
 endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o código do agente:
 
 - **Guardrails de segurança/PII** — detecção e mascaramento (ou bloqueio) de dados sensíveis em
@@ -133,7 +175,7 @@ endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o cód
 - **Fallbacks** — roteamento para modelos alternativos.
 
 **Como encaixar neste lab:** habilite o Unity AI Gateway no endpoint de Foundation Model que o agente
-consome (`databricks-claude-sonnet-5`). Assim, cada chamada que o agente faz passa pelos
+consome (`databricks-llama-4-maverick`). Assim, cada chamada que o agente faz passa pelos
 guardrails e é registrada — o agente continua idêntico, mas a camada de GenAI fica governada.
 
 > **Observação importante:** os guardrails do Unity AI Gateway são configurados em endpoints de
@@ -146,8 +188,9 @@ guardrails e é registrada — o agente continua idêntico, mas a camada de GenA
 ## Sobre o deploy do agente (notebook 02)
 
 O `agents.deploy` publica o agente em Model Serving e, para isso, **cria uma service principal**
-para o endpoint. Requisitos: cota de service principals disponível na conta e os *resources*
-declarados (índices de Vector Search, endpoints de FM e o Genie Space).
+para o endpoint. Requisitos: cota de service principals disponível na conta, os *resources*
+declarados (índices de Vector Search e o endpoint de embeddings) e os escopos de OBO para o LLM e o
+Genie (ver [Autenticação híbrida](#autenticação-híbrida-sistema--obo)).
 
 Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
 agente continua **totalmente funcional via notebook/job** — use o **notebook 03** para rodá-lo
