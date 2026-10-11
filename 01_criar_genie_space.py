@@ -1,14 +1,22 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 01 · Criar o Genie Space (ferramenta de dados do agente)
+# MAGIC # 01 · Criar o Genie Agent (ferramenta de dados do agente)
+# MAGIC
+# MAGIC ## 🧞 Prompt para o Genie code
+# MAGIC Depois de rodar este notebook, peça ao **Genie code**:
+# MAGIC >
+# MAGIC > **Crie um genie agent baseado nas especificações deste notebook**
+# MAGIC >
+# MAGIC
+# MAGIC ---
 # MAGIC
 # MAGIC A ferramenta `consultar_dados` do agente (notebook 02) responde perguntas sobre os
 # MAGIC **números da plataforma** consultando um **Genie Space pela API REST do SDK** (como o usuário, via OBO).
-# MAGIC Este notebook prepara os dados e traz o **passo a passo** para criar esse Genie Space na UI.
+# MAGIC Este notebook prepara os dados e consolida as **especificações** (tabelas, instruções, joins e
+# MAGIC perguntas de exemplo) usadas para criar o Genie Agent.
 # MAGIC
-# MAGIC > O Genie Space é criado **pela interface** (não há criação confiável por API). Este notebook
-# MAGIC > (1) adiciona as **chaves PK/FK** que ajudam o Genie a inferir os *joins* e (2) te dá as
-# MAGIC > tabelas, instruções e perguntas de exemplo prontas para colar.
+# MAGIC > Fluxo: rode as células abaixo (elas adicionam as **chaves PK/FK** e reúnem as especificações)
+# MAGIC > e então use o **prompt acima** no Genie code para criar o Genie Agent.
 
 # COMMAND ----------
 
