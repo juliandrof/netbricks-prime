@@ -18,7 +18,7 @@ from typing import Any, Optional
 import mlflow
 from databricks.sdk import WorkspaceClient
 from mlflow.pyfunc import ChatAgent
-from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
+from mlflow.types.agent import ChatAgentChunk, ChatAgentMessage, ChatAgentResponse
 
 CATALOG = os.environ.get("CATALOG", "netbricks_prime")
 SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
@@ -251,6 +251,14 @@ class NetbricksAgent(ChatAgent):
 
         return ChatAgentResponse(
             messages=[ChatAgentMessage(role="assistant", content=final or "(sem resposta)", id="1")])
+
+    @mlflow.trace(span_type="AGENT")
+    def predict_stream(self, messages, context=None, custom_inputs=None):
+        # A Review App e o AI Playground chamam o agente em modo streaming. A resposta é
+        # produzida pelo predict (loop de tool calling) e devolvida como um único chunk.
+        response = self.predict(messages, context, custom_inputs)
+        for message in response.messages:
+            yield ChatAgentChunk(delta=message)
 
 
 from mlflow.models import set_model
