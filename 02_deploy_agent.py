@@ -61,6 +61,18 @@ from pkg_resources import get_distribution
 
 mlflow.set_registry_uri("databricks-uc")
 
+# Experimento MLflow explícito e idempotente — não depende do experimento padrão do notebook
+# (que, se estiver na lixeira, causa "lifecycle stage is: deleted" ao reexecutar o lab).
+from mlflow.entities import ViewType
+from mlflow.tracking import MlflowClient
+
+_exp_nome = f"/Users/{spark.sql('SELECT current_user()').first()[0]}/netbricks_prime_{SCHEMA}"
+_cli = MlflowClient()
+_achados = _cli.search_experiments(view_type=ViewType.ALL, filter_string=f"name = '{_exp_nome}'")
+if _achados and _achados[0].lifecycle_stage == "deleted":
+    _cli.restore_experiment(_achados[0].experiment_id)
+mlflow.set_experiment(_exp_nome)
+
 # AUTENTICAÇÃO HÍBRIDA:
 #  - SystemAuthPolicy (resources): VS (índices catálogo/ajuda) e embeddings usam as credenciais
 #    de sistema (SP do endpoint), autorizadas automaticamente no deploy.
