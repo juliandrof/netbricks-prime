@@ -56,7 +56,7 @@ precisa ter permissão de uso).
 
 | Papel | Modelo | Onde entra |
 |-------|--------|------------|
-| LLM do agente | `databricks-llama-4-maverick` (Foundation Model API) — **parametrizável** | raciocínio e *tool calling* do agente híbrido |
+| LLM do agente | `databricks-claude-opus-4-8` (Foundation Model API) — **parametrizável** | raciocínio e *tool calling* do agente híbrido |
 | Embeddings | `databricks-gte-large-en` (Foundation Model API) | geração de embeddings dos índices de Vector Search |
 | ML clássico | scikit-learn `HistGradientBoostingClassifier` | modelos de churn e de propensão de upgrade |
 
@@ -64,7 +64,7 @@ precisa ter permissão de uso).
 > **Unity AI Gateway** é configurado (ver seção abaixo).
 
 > **O LLM é um parâmetro (widget `llm`) nos notebooks 02 e 03.** O default é
-> `databricks-llama-4-maverick` — um modelo de chat com *tool calling* disponível por padrão.
+> `databricks-claude-opus-4-8` — um modelo de chat com *tool calling*.
 > Como o LLM é chamado **via OBO (on-behalf-of-user)**, quem precisa de acesso ao Foundation Model
 > é o **usuário** que invoca o agente — não o service principal do endpoint. Você pode trocar por
 > qualquer endpoint de chat com *tool calling* a que o usuário do lab tenha acesso (ex.:
@@ -79,7 +79,7 @@ precisa ter permissão de uso).
 - **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
 - **Vector Search** habilitado no workspace.
 - Acesso às **Foundation Model APIs**: o **usuário** do lab precisa de acesso ao endpoint de LLM
-  escolhido (widget `llm`; default `databricks-llama-4-maverick`), pois ele é chamado via OBO; o
+  escolhido (widget `llm`; default `databricks-claude-opus-4-8`), pois ele é chamado via OBO; o
   endpoint de embeddings (`databricks-gte-large-en`) é usado com credenciais de sistema.
 - **Preview "Agent Framework: On-Behalf-Of-User Authorization" habilitado** pelo admin do workspace
   (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário.
@@ -115,7 +115,7 @@ precisa ter permissão de uso).
 
 ## O agente híbrido (`agent.py`)
 
-`ChatAgent` do Mosaic AI Agent Framework. O próprio LLM (por padrão `databricks-llama-4-maverick`)
+`ChatAgent` do Mosaic AI Agent Framework. O próprio LLM (por padrão `databricks-claude-opus-4-8`)
 escolhe entre 3 ferramentas via *tool calling* (loop de até 5 rodadas):
 
 | Ferramenta | Tipo | Para quê |
@@ -160,7 +160,7 @@ O agente combina dois modos de credencial:
 ## 🛡️ Onde entra o Unity AI Gateway
 
 O **Unity AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
-que o lab usa — principalmente o LLM do agente (`databricks-llama-4-maverick`) e, se desejado, o
+que o lab usa — principalmente o LLM do agente (`databricks-claude-opus-4-8`) e, se desejado, o
 endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o código do agente:
 
 - **Guardrails de segurança/PII** — detecção e mascaramento (ou bloqueio) de dados sensíveis em
@@ -171,7 +171,7 @@ endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o cód
 - **Fallbacks** — roteamento para modelos alternativos.
 
 **Como encaixar neste lab:** habilite o Unity AI Gateway no endpoint de Foundation Model que o agente
-consome (`databricks-llama-4-maverick`). Assim, cada chamada que o agente faz passa pelos
+consome (`databricks-claude-opus-4-8`). Assim, cada chamada que o agente faz passa pelos
 guardrails e é registrada — o agente continua idêntico, mas a camada de GenAI fica governada.
 
 > **Observação importante:** os guardrails do Unity AI Gateway são configurados em endpoints de

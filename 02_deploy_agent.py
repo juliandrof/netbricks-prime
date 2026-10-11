@@ -26,8 +26,8 @@
 # CATALOG, SCHEMA e VS_ENDPOINT vêm do _config. Aqui só o que é específico do deploy.
 dbutils.widgets.text("genie_space_id", "", "Genie Space ID (obrigatório)")
 # Endpoint de LLM: Foundation Model com tool calling.
-# Default: databricks-llama-4-maverick. Troque se quiser (ex.: databricks-gpt-5-2, databricks-claude-sonnet-5).
-dbutils.widgets.text("llm", "databricks-llama-4-maverick", "Endpoint do LLM")
+# Default: databricks-claude-opus-4-8. Troque se quiser (ex.: databricks-gpt-5-2, databricks-claude-sonnet-5).
+dbutils.widgets.text("llm", "databricks-claude-opus-4-8", "Endpoint do LLM")
 GENIE_SPACE_ID = dbutils.widgets.get("genie_space_id").strip()
 
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
