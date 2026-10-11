@@ -10,6 +10,9 @@
 # MAGIC # 02 · Deploy do Agente Híbrido — Netbricks Prime
 # MAGIC Loga o `agent.py`, registra no Unity Catalog e faz deploy em Model Serving.
 # MAGIC
+# MAGIC > Usa **MLflow 3** (`mlflow[databricks]>=3.1`), o que habilita o **tracing em tempo real**
+# MAGIC > do agente no endpoint (os spans `@mlflow.trace` do `agent.py` aparecem no experimento/Review App).
+# MAGIC
 # MAGIC ## Autenticação
 # MAGIC - **Credenciais de sistema** (service principal do endpoint) para Vector Search e embeddings
 # MAGIC   — declarados como *resources* e autorizados automaticamente no deploy.
@@ -21,7 +24,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U mlflow databricks-vectorsearch databricks-agents databricks-sdk databricks-ai-bridge openai
+# MAGIC %pip install --quiet -U "mlflow[databricks]>=3.1" databricks-vectorsearch databricks-agents databricks-sdk databricks-ai-bridge openai
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -93,7 +96,7 @@ with mlflow.start_run(run_name="netbricks_agent"):
     logged = mlflow.pyfunc.log_model(
         artifact_path="agent", python_model="agent.py",
         input_example=input_example, auth_policy=auth_policy,
-        pip_requirements=[f"mlflow=={get_distribution('mlflow').version}",
+        pip_requirements=[f"mlflow[databricks]=={get_distribution('mlflow').version}",
                           f"databricks-vectorsearch=={get_distribution('databricks-vectorsearch').version}",
                           f"databricks-sdk=={get_distribution('databricks-sdk').version}",
                           f"databricks-ai-bridge=={get_distribution('databricks-ai-bridge').version}",
