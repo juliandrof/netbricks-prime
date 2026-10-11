@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # 01 · Criar o Genie Space (ferramenta de dados do agente)
 # MAGIC
-# MAGIC A ferramenta `consultar_dados` do agente (notebooks 02/03) responde perguntas sobre os
+# MAGIC A ferramenta `consultar_dados` do agente (notebook 02) responde perguntas sobre os
 # MAGIC **números da plataforma** consultando um **Genie Space pela API REST do SDK** (como o usuário, via OBO).
 # MAGIC Este notebook prepara os dados e traz o **passo a passo** para criar esse Genie Space na UI.
 # MAGIC
@@ -146,11 +146,11 @@ for sql in constraints:
 # MAGIC 6. Dê um título (ex.: "Netbricks Prime — Genie de Dados") e **salve**.
 # MAGIC 7. Teste uma pergunta no próprio Space para validar.
 # MAGIC 8. Copie o **Space ID** da URL: `/genie/rooms/<SPACE_ID>`.
-# MAGIC 9. Cole esse `SPACE_ID` no widget **`genie_space_id`** dos notebooks **02** (deploy) e **03** (teste).
+# MAGIC 9. Cole esse `SPACE_ID` no widget **`genie_space_id`** do notebook **02** (deploy).
 # MAGIC
 # MAGIC > Em um hands-on com várias pessoas, um **único Genie Space compartilhado** atende a todos
 # MAGIC > (os dados são idênticos entre schemas) — todos usam o mesmo `SPACE_ID`.
 
 # COMMAND ----------
 
-print("Pronto. Crie o Genie Space na UI (seções acima) e cole o Space ID nos notebooks 02 e 03.")
+print("Pronto. Crie o Genie Space na UI (seções acima) e cole o Space ID no notebook 02.")

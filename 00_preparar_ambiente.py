@@ -4,7 +4,7 @@
 # MAGIC
 # MAGIC Notebook **orquestrador**: roda, em ordem, toda a fase de preparação do lab (dados + ML +
 # MAGIC Vector Search), que fica na pasta **`preparacao/`**. Depois dele, siga para os notebooks do
-# MAGIC agente: **01** (Genie Space) → **02** (deploy) → **03** (teste).
+# MAGIC agente: **01** (Genie Agent) → **02** (deploy) → App → **03** (escopos do App).
 # MAGIC
 # MAGIC | Passo | Notebook (em `preparacao/`) | O que faz |
 # MAGIC |------:|-----------------------------|-----------|
@@ -41,4 +41,4 @@ for i, nb in enumerate(NOTEBOOKS, 1):
     print(f"✅ [{i}/{len(NOTEBOOKS)}] {nb} concluído\n")
 
 print(f"🎉 Preparação concluída em {CATALOG}.{SCHEMA}. "
-      f"Siga para 01_criar_genie_space → 02_deploy_agent → 03_testar_agente.")
+      f"Siga para 01_criar_genie_space → 02_deploy_agent → (criar o App) → 03_conceder_escopos_app.")

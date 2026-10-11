@@ -103,8 +103,8 @@ def _user_workspace_client():
     """Cliente OBO (on-behalf-of-user): chama LLM e Genie com a credencial de quem invoca o agente.
 
     No serving, resolve o token do usuário via ``ModelServingUserCredentials``; fora do serving
-    (notebook 03), usa as credenciais padrão do notebook. VS e embeddings seguem em credenciais de
-    sistema (resources declarados)."""
+    (ex.: num notebook), usa as credenciais padrão do notebook. VS e embeddings seguem em
+    credenciais de sistema (resources declarados)."""
     if _in_model_serving():
         try:
             from databricks_ai_bridge import ModelServingUserCredentials

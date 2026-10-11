@@ -63,7 +63,7 @@ precisa ter permissão de uso).
 > Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
 > **Unity AI Gateway** é configurado (ver seção abaixo).
 
-> **O LLM é um parâmetro (widget `llm`) nos notebooks 02 e 03.** O default é
+> **O LLM é um parâmetro (widget `llm`) no notebook 02.** O default é
 > `databricks-claude-opus-4-8` — um modelo de chat com *tool calling*.
 > Como o LLM é chamado **via OBO (on-behalf-of-user)**, quem precisa de acesso ao Foundation Model
 > é o **usuário** que invoca o agente — não o service principal do endpoint. Você pode trocar por
@@ -98,11 +98,7 @@ Do zero ao agente rodando dentro de um App — **6 passos**:
 | **3** | 🧞 **Criar o Genie Agent** | Rode o `01_criar_genie_space.py` (prepara PK/FK e consolida as especificações) e, em seguida, peça ao **Genie code**:<br>👉 *"Crie um genie agent baseado nas especificações deste notebook"* |
 | **4** | 🤖 **Fazer o deploy do agente** | Copie o **ID do Genie Agent** gerado no passo 3 e cole no widget `genie_space_id` do `02_deploy_agent.py`. Rode o notebook → o agente é logado, registrado no UC e publicado em Model Serving (`netbricks_agent_<schema>`). |
 | **5** | 💬 **Criar o App** | Crie um **Databricks App** apontando para o **agente já publicado** (o endpoint de serving do passo 4). |
-| **6** | 🔑 **Conceder os escopos ao App** | Adicione ao App os escopos:<br>`model-serving` · `genie` · `serving.serving-endpoints` · `dashboards.genie` |
-
-> 💡 **Validação opcional:** o `03_testar_agente.py` executa o `agent.py` **localmente no notebook**
-> (credenciais do usuário, sem deploy) e exercita as 3 ferramentas — útil para checar o Genie Agent
-> antes de publicar no passo 4.
+| **6** | 🔑 **Conceder os escopos ao App** | Rode o `03_conceder_escopos_app.py` (widget `APP_NAME`, padrão `chat-netbricks`) — ele faz um `PATCH /api/2.0/apps/{APP_NAME}` aplicando os `user_api_scopes` necessários (`model-serving`, `serving.serving-endpoints`, `genie`, `dashboards.genie`, `sql`, `ai-gateway`, `vector-search` e `catalog.*:read`). |
 
 ### Detalhe do passo 2 — fase de preparação (`preparacao/`)
 
@@ -134,10 +130,10 @@ escolhe entre 3 ferramentas via *tool calling* (loop de até 5 rodadas):
 | `consultar_dados` | **Genie Space (API REST, via OBO)** | Perguntas em linguagem natural sobre os números da plataforma (o Genie gera e executa o SQL com governança) |
 
 É um arquivo importável (`from agent import AGENT`), com defaults que já batem com os recursos do
-lab — roda tanto no notebook (03) quanto no serving (02). A ferramenta `consultar_dados` usa a
+lab — é publicado em Model Serving pelo notebook 02. A ferramenta `consultar_dados` usa a
 **API REST do Genie via SDK** (`w.genie.start_conversation_and_wait`): o agente envia a pergunta em
 linguagem natural e o Genie monta/executa a consulta — o agente **não** gera SQL. O Genie Space
-usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget nos notebooks 02/03).
+usado é definido pela variável de ambiente `GENIE_SPACE_ID` (widget no notebook 02).
 
 ### Autenticação híbrida (sistema + OBO)
 
@@ -158,8 +154,7 @@ O agente combina dois modos de credencial:
    e consolida as **especificações** do Genie (tabelas, instruções, perguntas de exemplo).
 2. Peça ao **Genie code**: *"Crie um genie agent baseado nas especificações deste notebook"*.
 3. Copie o **ID do Genie Agent** gerado.
-4. Informe esse ID no widget `genie_space_id` do notebook **02** (deploy) — e, se for validar antes,
-   também no **03** (teste).
+4. Informe esse ID no widget `genie_space_id` do notebook **02** (deploy).
 
 > Como os dados são idênticos entre schemas (geração determinística), um **único Genie Agent
 > compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo ID.
@@ -198,9 +193,8 @@ declarados (índices de Vector Search e o endpoint de embeddings) e os escopos d
 Genie (ver [Autenticação híbrida](#autenticação-híbrida-sistema--obo)).
 
 Se o deploy falhar por limite de recursos da conta (ex.: cota de service principals esgotada), o
-agente continua **totalmente funcional via notebook/job** — use o **notebook 03** para rodá-lo
-com suas próprias credenciais, sem criar endpoint. O modelo já fica registrado no Unity Catalog,
-então o deploy pode ser refeito quando houver cota.
+modelo já fica **registrado no Unity Catalog** — então o deploy pode ser refeito quando houver
+cota, sem precisar logar o modelo de novo.
 
 ---
 
