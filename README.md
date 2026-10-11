@@ -83,20 +83,30 @@ precisa ter permissão de uso).
   endpoint de embeddings (`databricks-gte-large-en`) é usado com credenciais de sistema.
 - **Preview "Agent Framework: On-Behalf-Of-User Authorization" habilitado** pelo admin do workspace
   (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário.
-- Um **Genie Space** sobre as tabelas do lab (ver [passo abaixo](#genie-space-para-a-ferramenta-de-dados)) — o agente o consulta via API REST do Genie (SDK), como o usuário (OBO).
+- Um **Genie Agent** sobre as tabelas do lab (ver [passo abaixo](#genie-agent-para-a-ferramenta-de-dados)) — o agente o consulta via API REST do Genie (SDK), como o usuário (OBO).
 
 ---
 
-## Passo a passo (ordem de execução)
+## 🚀 Passo a passo do lab (ordem de execução)
 
-| # | Notebook | O que faz | Saídas principais |
-|---|----------|-----------|-------------------|
-| **0** | `00_preparar_ambiente.py` | **Orquestrador** — roda, em ordem, toda a fase de preparação (os 5 notebooks em `preparacao/`) via `dbutils.notebook.run`. | base de dados + modelos + índices (ver sub-passos) |
-| **1** | `01_criar_genie_space.py` | Adiciona as chaves PK/FK (dicas de *join*) e traz o passo a passo + textos prontos para **criar o Genie Space na UI**. | constraints PK/FK; Genie Space criado manualmente → `genie_space_id` |
-| **2** | `02_deploy_agent.py` | Loga `agent.py` com os *resources* que acessa, registra no UC e faz deploy em Model Serving. | modelo `netbricks_agent` + endpoint de serving |
-| **3** | `03_testar_agente.py` | Executa o `agent.py` **localmente no notebook** (credenciais do usuário, sem deploy) e valida as 3 ferramentas. | respostas das 3 perguntas de teste |
+Do zero ao agente rodando dentro de um App — **6 passos**:
 
-**Fase de preparação (`preparacao/`)** — rodada pelo `00_preparar_ambiente.py` (ou individualmente, nesta ordem):
+| # | Passo | Como fazer |
+|:-:|-------|------------|
+| **1** | ⚙️ **Preencher o `_config`** | Defina `CATALOG` e `SCHEMA` **uma única vez** no notebook `_config`. Todos os demais notebooks o reaproveitam via `%run`. |
+| **2** | 🏗️ **Criar todo o ambiente** | Rode o `00_preparar_ambiente.py` — o **orquestrador** executa, em ordem, os 5 notebooks de `preparacao/` (dados → features → ML → Vector Search). |
+| **3** | 🧞 **Criar o Genie Agent** | Rode o `01_criar_genie_space.py` (prepara PK/FK e consolida as especificações) e, em seguida, peça ao **Genie code**:<br>👉 *"Crie um genie agent baseado nas especificações deste notebook"* |
+| **4** | 🤖 **Fazer o deploy do agente** | Copie o **ID do Genie Agent** gerado no passo 3 e cole no widget `genie_space_id` do `02_deploy_agent.py`. Rode o notebook → o agente é logado, registrado no UC e publicado em Model Serving (`netbricks_agent_<schema>`). |
+| **5** | 💬 **Criar o App** | Crie um **Databricks App** apontando para o **agente já publicado** (o endpoint de serving do passo 4). |
+| **6** | 🔑 **Conceder os escopos ao App** | Adicione ao App os escopos:<br>`model-serving` · `genie` · `serving.serving-endpoints` · `dashboards.genie` |
+
+> 💡 **Validação opcional:** o `03_testar_agente.py` executa o `agent.py` **localmente no notebook**
+> (credenciais do usuário, sem deploy) e exercita as 3 ferramentas — útil para checar o Genie Agent
+> antes de publicar no passo 4.
+
+### Detalhe do passo 2 — fase de preparação (`preparacao/`)
+
+Rodada pelo `00_preparar_ambiente.py` (ou individualmente, **nesta ordem**):
 
 | # | Notebook | O que faz | Saídas principais |
 |---|----------|-----------|-------------------|
@@ -106,10 +116,9 @@ precisa ter permissão de uso).
 | **3** | `preparacao/03_modelo_upgrade.py` | Treina **propensão de upgrade** (`is_pago`) e aplica aos usuários **Free** — os de maior probabilidade são os melhores alvos de conversão. | modelo `modelo_upgrade`, tabela `scores_upgrade` |
 | **4** | `preparacao/04_vector_search.py` | Cria o endpoint VS e dois índices Delta Sync. | `catalogo_index` (sinopse), `ajuda_index` (conteúdo) |
 
-> **Parâmetros:** ajuste `CATALOG`/`SCHEMA` **uma vez** no `_config` (todos os notebooks o
-> reaproveitam via `%run ./_config`; os de `preparacao/` usam `%run ../_config`). A ordem
-> **0 → 1 → 2 → 3** é obrigatória (cada etapa consome a saída da anterior); o `genie_space_id`
-> criado no **01** é preenchido nos widgets dos notebooks **02** e **03**.
+> **Parâmetros:** ajuste `CATALOG`/`SCHEMA` **uma vez** no `_config` (os notebooks de `preparacao/`
+> usam `%run ../_config`). A ordem **0 → 1 → 2 → 3** da preparação é obrigatória — cada etapa consome
+> a saída da anterior.
 
 ---
 
@@ -143,17 +152,17 @@ O agente combina dois modos de credencial:
 > ⚠️ **Pré-requisito (admin):** habilite o preview **"Agent Framework: On-Behalf-Of-User
 > Authorization"** antes do deploy, para o Model Serving encaminhar o token do usuário.
 
-### Genie Space para a ferramenta de dados
+### Genie Agent para a ferramenta de dados
 
 1. Rode o notebook **`01_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
-   e traz o passo a passo da UI + os textos prontos (tabelas, instruções, perguntas de exemplo).
-2. Siga as instruções do 01 para criar o Genie Space na UI apontando para as tabelas do schema.
-3. Copie o **Space ID** da URL (`/genie/rooms/<space_id>`).
-4. Informe esse ID no widget `genie_space_id` dos notebooks **02** (deploy) e **03** (teste).
+   e consolida as **especificações** do Genie (tabelas, instruções, perguntas de exemplo).
+2. Peça ao **Genie code**: *"Crie um genie agent baseado nas especificações deste notebook"*.
+3. Copie o **ID do Genie Agent** gerado.
+4. Informe esse ID no widget `genie_space_id` do notebook **02** (deploy) — e, se for validar antes,
+   também no **03** (teste).
 
-> Como os dados são idênticos entre schemas (geração determinística), um **único Genie Space
-> compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo
-> `GENIE_SPACE_ID`.
+> Como os dados são idênticos entre schemas (geração determinística), um **único Genie Agent
+> compartilhado** atende todos os participantes de um hands-on — basta todos usarem o mesmo ID.
 
 ---
 
