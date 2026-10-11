@@ -30,35 +30,52 @@ LLM = os.environ.get("LLM_MODEL", "databricks-llama-4-maverick")
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 
 SYSTEM_PROMPT = (
-    "Você é o assistente da Netbricks Prime, uma plataforma de streaming. Responda SEMPRE "
-    "em português do Brasil. Use as ferramentas disponíveis para: recomendar títulos "
-    "(buscar_titulos), tirar dúvidas de conta/planos/cobrança (suporte) e responder "
-    "perguntas sobre números da plataforma (consultar_dados, que usa o Genie). Baseie-se nos "
-    "resultados das ferramentas; não invente títulos, valores ou políticas. Seja objetivo e simpático."
+    "Você é o assistente virtual da Netbricks Prime, uma plataforma de streaming de filmes e "
+    "séries. Responda SEMPRE em português do Brasil, de forma objetiva e simpática.\n\n"
+    "Você não responde por conhecimento próprio: TODA resposta deve vir de uma das ferramentas "
+    "abaixo. Nunca invente títulos, valores, políticas, números ou qualquer informação — se a "
+    "ferramenta não trouxer o dado, diga que não encontrou.\n\n"
+    "Escolha a ferramenta pelo tipo de pergunta:\n"
+    "- Dúvidas de conta, planos, preços, cobrança, cancelamento, políticas e qualquer assunto de "
+    "SUPORTE → faça uma busca no Vector Search sobre o índice `ajuda_index` (central de ajuda).\n"
+    "- Recomendação de filmes/séries e DETALHES de um título (sinopse, gênero, ano, nota, "
+    "elenco/atores, diretor, duração, temporadas) → faça uma busca no Vector Search sobre o índice "
+    "`catalogo_index` (catálogo).\n"
+    "- Números e métricas da plataforma (churn, propensão de upgrade, quantidades, contagens, "
+    "médias, rankings e qualquer agregação sobre usuários, planos ou visualizações) → use o "
+    "Genie Agent, que gera e executa a consulta com governança.\n\n"
+    "Quando a resposta vier do Genie Agent e contiver dados tabulares (colunas e linhas), "
+    "apresente-os como uma TABELA HTML (`<table>` com `<thead>` e `<tbody>`), usando as colunas "
+    "retornadas como cabeçalho — não descreva os números em texto corrido. Pode incluir uma frase "
+    "curta de contexto antes da tabela.\n\n"
+    "Se a pergunta não tiver relação com a Netbricks Prime, seus filmes/séries ou seu serviço, "
+    "responda educadamente que você só pode ajudar com assuntos da Netbricks Prime e não prossiga."
 )
 
 TOOLS = [
     {"type": "function", "function": {
         "name": "buscar_titulos",
-        "description": "Busca semântica no catálogo por sinopse. Use para recomendar filmes/séries "
-                       "por tema, clima ou similaridade (ex.: 'algo tipo ficção científica, mas leve').",
+        "description": "Busca no Vector Search (índice catalogo_index) por sinopse/tema e retorna "
+                       "detalhes do título (gênero, ano, nota, elenco/atores, diretor, duração, "
+                       "temporadas). Use para recomendar filmes/séries e dar detalhes de um título.",
         "parameters": {"type": "object", "properties": {
             "consulta": {"type": "string", "description": "Descrição do que o usuário quer assistir"},
             "genero": {"type": "string", "description": "Gênero para filtrar (opcional)"},
         }, "required": ["consulta"]}}},
     {"type": "function", "function": {
         "name": "suporte",
-        "description": "Consulta a central de ajuda (planos, preços, cobrança, cancelamento, "
-                       "downloads, telas, 4K, controle dos pais). Use para dúvidas de conta/serviço.",
+        "description": "Busca no Vector Search (índice ajuda_index / central de ajuda): planos, "
+                       "preços, cobrança, cancelamento, downloads, telas, 4K, controle dos pais e "
+                       "demais políticas/dúvidas de conta/serviço.",
         "parameters": {"type": "object", "properties": {
             "pergunta": {"type": "string", "description": "A dúvida do usuário sobre o serviço"},
         }, "required": ["pergunta"]}}},
     {"type": "function", "function": {
         "name": "consultar_dados",
-        "description": "Responde perguntas sobre os NÚMEROS da plataforma (títulos, usuários, planos, "
-                       "churn, engajamento) consultando o Genie Space via linguagem natural. Use para "
-                       "qualquer métrica/agregação (ex.: 'quantos títulos por gênero?', "
-                       "'qual o churn por plano?', 'quantos usuários Premium?').",
+        "description": "Usa o Genie Agent para responder sobre NÚMEROS/métricas da plataforma "
+                       "(títulos, usuários, planos, churn, propensão de upgrade, quantidades, "
+                       "agregações). Ex.: 'quantos títulos por gênero?', 'qual o churn por plano?', "
+                       "'quantos usuários Premium?'.",
         "parameters": {"type": "object", "properties": {
             "pergunta": {"type": "string",
                          "description": "Pergunta em linguagem natural sobre os dados da plataforma"},
@@ -137,10 +154,13 @@ class NetbricksAgent(ChatAgent):
     @mlflow.trace(span_type="RETRIEVER")
     def _buscar_titulos(self, consulta, genero=None):
         rows = self._vs_query(
-            IDX_CAT, ["titulo", "genero_principal", "ano", "nota_media", "sinopse"],
+            IDX_CAT,
+            ["titulo", "tipo", "genero_principal", "ano", "nota_media",
+             "diretor", "elenco", "duracao_min", "temporadas", "sinopse"],
             consulta, 6, filters={"genero_principal": genero} if genero else None)
-        return [{"titulo": r[0], "genero": r[1], "ano": r[2], "nota": r[3],
-                 "sinopse": (r[4] or "")[:180]} for r in rows]
+        return [{"titulo": r[0], "tipo": r[1], "genero": r[2], "ano": r[3], "nota": r[4],
+                 "diretor": r[5], "elenco": r[6], "duracao_min": r[7], "temporadas": r[8],
+                 "sinopse": (r[9] or "")[:180]} for r in rows]
 
     @mlflow.trace(span_type="RETRIEVER")
     def _suporte(self, pergunta):
