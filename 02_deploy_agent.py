@@ -1,4 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # 02 · Deploy do Agente Híbrido — Netbricks Prime
 # MAGIC Loga o `agent.py`, registra no Unity Catalog e faz deploy em Model Serving.
