@@ -44,6 +44,10 @@ SYSTEM_PROMPT = (
     "- Números e métricas da plataforma (churn, propensão de upgrade, quantidades, contagens, "
     "médias, rankings e qualquer agregação sobre usuários, planos ou visualizações) → use o "
     "Genie Agent, que gera e executa a consulta com governança.\n\n"
+    "Quando a resposta vier do Genie Agent e contiver dados tabulares (colunas e linhas), "
+    "apresente-os como uma TABELA HTML (`<table>` com `<thead>` e `<tbody>`), usando as colunas "
+    "retornadas como cabeçalho — não descreva os números em texto corrido. Pode incluir uma frase "
+    "curta de contexto antes da tabela.\n\n"
     "Se a pergunta não tiver relação com a Netbricks Prime, seus filmes/séries ou seu serviço, "
     "responda educadamente que você só pode ajudar com assuntos da Netbricks Prime e não prossiga."
 )
