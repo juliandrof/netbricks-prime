@@ -1,4 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # 04 · Vector Search — Índices (catálogo + central de ajuda)
 # MAGIC Cria os dois índices Delta Sync que o **agente híbrido** usa:
