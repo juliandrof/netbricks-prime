@@ -210,6 +210,26 @@ então o deploy pode ser refeito quando houver cota.
 `features_usuarios`, `scores_churn`, `scores_upgrade`
 **Modelos (UC):** `modelo_churn`, `modelo_upgrade`, `netbricks_agent`
 **Vector Search:** endpoint `netbricks_vs_<schema>` + índices `catalogo_index`, `ajuda_index`
+**Serving:** endpoint do agente `netbricks_agent_<schema>`
+**Workspace:** App `chat-netbricks` + Genie Agent `Netbricks Prime — Genie de Dados`
+
+---
+
+## 🧹 Limpeza (cleanup)
+
+O notebook **`99_limpar_ambiente.py`** remove **tudo** o que o lab cria, na ordem correta de
+dependência: o **App `chat-netbricks`**, o endpoint do agente, os índices e o endpoint de Vector
+Search, o **Genie Agent `Netbricks Prime — Genie de Dados`** e, por fim, os dados/modelos no Unity
+Catalog.
+
+- É **idempotente** (ignora o que já não existe) e **não toca no catálogo** — só no schema do lab.
+- É uma **ação destrutiva protegida por confirmação**: nada é apagado enquanto o widget
+  **`confirmar`** não estiver em **`sim`**.
+- Widgets: `confirmar` (`nao`/`sim`), `drop_schema` (`sim` apaga o schema inteiro com `CASCADE`;
+  `nao` remove apenas os objetos conhecidos e preserva o schema), além de `app_name`,
+  `genie_space_name` e `genie_space_id` (opcional) — já com os nomes padrão deste lab.
+
+> Se a API não permitir remover o Genie Agent, o notebook indica como apagá-lo pela UI.
 
 ---
 
