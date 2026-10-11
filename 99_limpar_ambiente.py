@@ -1,4 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC # 99 · Limpar ambiente (cleanup) — Netbricks Prime
 # MAGIC
