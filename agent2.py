@@ -1,0 +1,297 @@
+"""
+Agente Híbrido da Netbricks Prime (Mosaic AI Agent Framework — ResponsesAgent).
+
+Variante do agente que expõe a interface **OpenAI Responses API** (`input` / `output`),
+compatível ao mesmo tempo com o **AI Playground** e com o template de **App "Chat UI for
+existing Agent"** (que envia `input` + blocos `input_text`), sem ajuste no cliente.
+
+A lógica é idêntica à do `agent.py` (mesmo system prompt, mesmas três ferramentas e o mesmo
+loop de tool calling manual via chat completions). Muda apenas a BORDA de entrada/saída:
+em vez de `messages`/`ChatAgentResponse`, lê de `request.input` e devolve `ResponsesAgentResponse`.
+
+Três ferramentas, escolhidas pelo próprio LLM (tool calling):
+  1. buscar_titulos   -> busca semântica no catálogo (Vector Search) = descoberta/recomendação
+  2. suporte          -> RAG na central de ajuda (Vector Search)
+  3. consultar_dados  -> perguntas em linguagem natural sobre os números da plataforma,
+                         respondidas por um **Genie Space** via a API REST do Genie (SDK,
+                         `w.genie`), chamado como o usuário (OBO). O Genie gera e executa o SQL
+                         com governança — o agente não monta SQL diretamente.
+
+Defaults já batem com os recursos do lab; informe o GENIE_SPACE_ID (env ou widget no deploy).
+"""
+import json
+import os
+from typing import Any, Generator, Optional
+
+import mlflow
+from databricks.sdk import WorkspaceClient
+from mlflow.pyfunc import ResponsesAgent
+from mlflow.types.responses import (
+    ResponsesAgentRequest,
+    ResponsesAgentResponse,
+    ResponsesAgentStreamEvent,
+)
+
+CATALOG = os.environ.get("CATALOG", "netbricks_prime")
+SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
+VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
+IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
+IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
+LLM = os.environ.get("LLM_MODEL", "databricks-claude-opus-4-8")
+# ID do Genie Space usado pela ferramenta consultar_dados (via API REST do SDK). Obrigatório p/ essa tool.
+GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
+
+SYSTEM_PROMPT = (
+    "Você é o assistente virtual da Netbricks Prime, uma plataforma de streaming de filmes e "
+    "séries. Responda SEMPRE em português do Brasil, de forma objetiva e simpática.\n\n"
+    "Você não responde por conhecimento próprio: TODA resposta deve vir de uma das ferramentas "
+    "abaixo. Nunca invente títulos, valores, políticas, números ou qualquer informação — se a "
+    "ferramenta não trouxer o dado, diga que não encontrou.\n\n"
+    "Escolha a ferramenta pelo tipo de pergunta:\n"
+    "- Dúvidas de conta, planos, preços, cobrança, cancelamento, políticas e qualquer assunto de "
+    "SUPORTE → faça uma busca no Vector Search sobre o índice `ajuda_index` (central de ajuda).\n"
+    "- Recomendação de filmes/séries e DETALHES de um título (sinopse, gênero, ano, nota, "
+    "elenco/atores, diretor, duração, temporadas) → faça uma busca no Vector Search sobre o índice "
+    "`catalogo_index` (catálogo).\n"
+    "- Números e métricas da plataforma (churn, propensão de upgrade, quantidades, contagens, "
+    "médias, rankings e qualquer agregação sobre usuários, planos ou visualizações) → use o "
+    "Genie Agent, que gera e executa a consulta com governança.\n\n"
+    "Quando a resposta vier do Genie Agent e contiver dados tabulares (colunas e linhas), "
+    "apresente-os como uma TABELA EM MARKDOWN, usando as colunas retornadas como cabeçalho — "
+    "não descreva os números em texto corrido. Pode incluir uma frase curta de contexto antes "
+    "da tabela.\n\n"
+    "Se a pergunta não tiver relação com a Netbricks Prime, seus filmes/séries ou seu serviço, "
+    "responda educadamente que você só pode ajudar com assuntos da Netbricks Prime e não prossiga."
+)
+
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "buscar_titulos",
+        "description": "Busca no Vector Search (índice catalogo_index) por sinopse/tema e retorna "
+                       "detalhes do título (gênero, ano, nota, elenco/atores, diretor, duração, "
+                       "temporadas). Use para recomendar filmes/séries e dar detalhes de um título.",
+        "parameters": {"type": "object", "properties": {
+            "consulta": {"type": "string", "description": "Descrição do que o usuário quer assistir"},
+            "genero": {"type": "string", "description": "Gênero para filtrar (opcional)"},
+        }, "required": ["consulta"]}}},
+    {"type": "function", "function": {
+        "name": "suporte",
+        "description": "Busca no Vector Search (índice ajuda_index / central de ajuda): planos, "
+                       "preços, cobrança, cancelamento, downloads, telas, 4K, controle dos pais e "
+                       "demais políticas/dúvidas de conta/serviço.",
+        "parameters": {"type": "object", "properties": {
+            "pergunta": {"type": "string", "description": "A dúvida do usuário sobre o serviço"},
+        }, "required": ["pergunta"]}}},
+    {"type": "function", "function": {
+        "name": "consultar_dados",
+        "description": "Usa o Genie Agent para responder sobre NÚMEROS/métricas da plataforma "
+                       "(títulos, usuários, planos, churn, propensão de upgrade, quantidades, "
+                       "agregações). Ex.: 'quantos títulos por gênero?', 'qual o churn por plano?', "
+                       "'quantos usuários Premium?'.",
+        "parameters": {"type": "object", "properties": {
+            "pergunta": {"type": "string",
+                         "description": "Pergunta em linguagem natural sobre os dados da plataforma"},
+        }, "required": ["pergunta"]}}},
+]
+
+
+def _in_model_serving() -> bool:
+    """True quando rodando dentro de um endpoint de Model Serving (variáveis setadas pelo runtime)."""
+    v = (os.environ.get("IS_IN_DB_MODEL_SERVING_ENV")
+         or os.environ.get("IS_IN_DATABRICKS_MODEL_SERVING_ENV") or "")
+    return v.lower() == "true"
+
+
+def _user_workspace_client():
+    """Cliente OBO (on-behalf-of-user): chama LLM e Genie com a credencial de quem invoca o agente.
+
+    No serving, resolve o token do usuário via ``ModelServingUserCredentials``; fora do serving
+    (ex.: num notebook), usa as credenciais padrão do notebook. VS e embeddings seguem em
+    credenciais de sistema (resources declarados)."""
+    if _in_model_serving():
+        try:
+            from databricks_ai_bridge import ModelServingUserCredentials
+        except Exception:
+            from databricks.sdk.credentials_provider import ModelServingUserCredentials
+        return WorkspaceClient(credentials_strategy=ModelServingUserCredentials())
+    return WorkspaceClient()
+
+
+class NetbricksAgent(ResponsesAgent):
+    def __init__(self):
+        self._w = None
+        self._uw = None
+
+    @property
+    def w(self):
+        # Credenciais de SISTEMA (service principal do endpoint): usadas pelo Vector Search,
+        # que são resources declarados (SystemAuthPolicy) e autorizados automaticamente no deploy.
+        if self._w is None:
+            self._w = WorkspaceClient()
+        return self._w
+
+    @property
+    def user_w(self):
+        # Credenciais do USUÁRIO (OBO): usadas pelo LLM e pelo Genie. A estratégia resolve o token
+        # do invocador a cada request, então cachear o objeto cliente é ok.
+        if self._uw is None:
+            self._uw = _user_workspace_client()
+        return self._uw
+
+    @property
+    def oai(self):
+        # Cliente OpenAI do serving com credenciais do usuário (OBO). Reconstruído a cada acesso
+        # para usar o token do request atual.
+        return self.user_w.serving_endpoints.get_open_ai_client()
+
+    def _vs_query(self, index_name, columns, query_text, num_results, filters=None):
+        """Consulta um índice de Vector Search via SDK (credenciais de sistema)."""
+        kwargs = dict(index_name=index_name, columns=columns,
+                      query_text=query_text, num_results=num_results)
+        if filters:
+            kwargs["filters_json"] = json.dumps(filters)
+        resp = self.w.vector_search_indexes.query_index(**kwargs)
+        return (resp.result.data_array if resp.result else None) or []
+
+    # ---- ferramentas ----
+    @mlflow.trace(span_type="RETRIEVER")
+    def _buscar_titulos(self, consulta, genero=None):
+        rows = self._vs_query(
+            IDX_CAT,
+            ["titulo", "tipo", "genero_principal", "ano", "nota_media",
+             "diretor", "elenco", "duracao_min", "temporadas", "sinopse"],
+            consulta, 6, filters={"genero_principal": genero} if genero else None)
+        return [{"titulo": r[0], "tipo": r[1], "genero": r[2], "ano": r[3], "nota": r[4],
+                 "diretor": r[5], "elenco": r[6], "duracao_min": r[7], "temporadas": r[8],
+                 "sinopse": (r[9] or "")[:180]} for r in rows]
+
+    @mlflow.trace(span_type="RETRIEVER")
+    def _suporte(self, pergunta):
+        rows = self._vs_query(IDX_AJU, ["titulo", "conteudo"], pergunta, 3)
+        return [{"topico": r[0], "conteudo": r[1]} for r in rows]
+
+    @mlflow.trace(span_type="TOOL")
+    def _consultar_dados(self, pergunta):
+        """Encaminha a pergunta ao Genie Space via API REST do SDK, como o usuário (OBO).
+
+        O Genie gera e executa o SQL com governança — o agente não monta SQL. Requer o escopo
+        ``dashboards.genie`` no deploy."""
+        if not GENIE_SPACE_ID:
+            return {"erro": "GENIE_SPACE_ID não configurado — defina a variável de ambiente."}
+        msg = self.user_w.genie.start_conversation_and_wait(GENIE_SPACE_ID, pergunta)
+        partes = []
+        for att in (msg.attachments or []):
+            texto = getattr(getattr(att, "text", None), "content", None)
+            if texto:
+                partes.append(texto)
+            if getattr(att, "query", None) is not None:
+                q = att.query
+                if getattr(q, "description", None):
+                    partes.append(q.description)
+                linhas = self._genie_rows(msg, att.attachment_id)
+                if linhas:
+                    partes.append(json.dumps(linhas, ensure_ascii=False))
+        return {"resposta": "\n".join(partes) if partes else "(sem resposta do Genie)"}
+
+    def _genie_rows(self, msg, attachment_id):
+        """Busca as linhas do resultado de um attachment de query do Genie (máx. 50 linhas)."""
+        try:
+            res = self.user_w.genie.get_message_attachment_query_result(
+                GENIE_SPACE_ID, msg.conversation_id, msg.id, attachment_id)
+            sr = res.statement_response
+            if not (sr and sr.result and sr.result.data_array):
+                return None
+            cols = []
+            if sr.manifest and sr.manifest.schema and sr.manifest.schema.columns:
+                cols = [c.name for c in sr.manifest.schema.columns]
+            linhas = sr.result.data_array[:50]
+            return {"colunas": cols, "linhas": linhas} if cols else {"linhas": linhas}
+        except Exception as e:
+            return {"erro_resultado": str(e)[:200]}
+
+    def _exec_tool(self, name, args):
+        try:
+            if name == "buscar_titulos":
+                return self._buscar_titulos(args.get("consulta", ""), args.get("genero"))
+            if name == "suporte":
+                return self._suporte(args.get("pergunta", ""))
+            if name == "consultar_dados":
+                return self._consultar_dados(args.get("pergunta", ""))
+            return {"erro": f"ferramenta desconhecida: {name}"}
+        except Exception as e:
+            return {"erro": str(e)[:300]}
+
+    # ---- borda Responses API ----
+    def _flatten_content(self, content) -> str:
+        """Achata o `content` de um item de input (string ou blocos input_text/output_text/text)."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            partes = []
+            for b in content:
+                d = b if isinstance(b, dict) else (b.model_dump() if hasattr(b, "model_dump") else {})
+                if d.get("type") in ("input_text", "output_text", "text"):
+                    partes.append(d.get("text", ""))
+            return "\n".join(p for p in partes if p)
+        return "" if content is None else str(content)
+
+    def _input_to_messages(self, request: ResponsesAgentRequest):
+        """Converte os itens de `request.input` (formato Responses) em mensagens de chat completions."""
+        msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for item in request.input:
+            d = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+            role = d.get("role")
+            if role not in ("user", "assistant", "system", "developer"):
+                continue  # ignora itens sem papel de mensagem (ex.: reasoning, tool items)
+            if role == "developer":
+                role = "system"
+            msgs.append({"role": role, "content": self._flatten_content(d.get("content"))})
+        return msgs
+
+    @mlflow.trace(span_type="AGENT")
+    def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+        msgs = self._input_to_messages(request)
+
+        final = ""
+        for _ in range(5):  # limite de rodadas de tool calling
+            resp = self.oai.chat.completions.create(
+                model=LLM, messages=msgs, tools=TOOLS, max_tokens=1024)
+            msg = resp.choices[0].message
+            if not msg.tool_calls:
+                final = msg.content or ""
+                break
+            # preserva a mensagem do assistant com os tool_calls (como dict, p/ a próxima rodada)
+            msgs.append({
+                "role": "assistant", "content": msg.content or "",
+                "tool_calls": [{"id": tc.id, "type": "function",
+                                "function": {"name": tc.function.name,
+                                             "arguments": tc.function.arguments}}
+                               for tc in msg.tool_calls],
+            })
+            for tc in msg.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except Exception:
+                    args = {}
+                result = self._exec_tool(tc.function.name, args)
+                msgs.append({"role": "tool", "tool_call_id": tc.id,
+                             "content": json.dumps(result, ensure_ascii=False)})
+
+        item = self.create_text_output_item(text=final or "(sem resposta)", id="1")
+        return ResponsesAgentResponse(output=[item])
+
+    @mlflow.trace(span_type="AGENT")
+    def predict_stream(
+        self, request: ResponsesAgentRequest
+    ) -> Generator[ResponsesAgentStreamEvent, None, None]:
+        # A Review App, o AI Playground e o App chamam o agente em modo streaming. A resposta é
+        # produzida pelo predict (loop de tool calling) e devolvida como um único item concluído.
+        response = self.predict(request)
+        for item in response.output:
+            yield ResponsesAgentStreamEvent(type="response.output_item.done", item=item)
+
+
+from mlflow.models import set_model
+
+AGENT = NetbricksAgent()
+set_model(AGENT)
