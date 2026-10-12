@@ -43,7 +43,7 @@ mlflow.set_registry_uri("databricks-uc")
 from mlflow.entities import ViewType
 from mlflow.tracking import MlflowClient
 
-_exp_nome = f"/Users/{spark.sql('SELECT current_user()').first()[0]}/netbricks_prime_{SCHEMA}"
+_exp_nome = f"/Users/{spark.sql('SELECT current_user()').first()[0]}/netbricks_prime_upgrade_{SCHEMA}"
 _cli = MlflowClient()
 _achados = _cli.search_experiments(view_type=ViewType.ALL, filter_string=f"name = '{_exp_nome}'")
 if _achados and _achados[0].lifecycle_stage == "deleted":
