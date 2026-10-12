@@ -14,7 +14,7 @@
 # MAGIC | Ordem | Objeto | Onde vive |
 # MAGIC |------:|--------|-----------|
 # MAGIC | 1 | **App** `chat-netbricks` | Databricks Apps |
-# MAGIC | 2 | **Endpoints do agente** `netbricks_agent_<schema>` e `netbricks_agent_v2_<schema>` | Model Serving |
+# MAGIC | 2 | **Endpoint do agente** `netbricks_agent_<schema>` | Model Serving |
 # MAGIC | 3 | **Índices de Vector Search** `catalogo_index`, `ajuda_index` | Vector Search |
 # MAGIC | 4 | **Endpoint de Vector Search** `netbricks_vs_<schema>` | Vector Search |
 # MAGIC | 5 | **Genie Agent** `Netbricks Prime — Genie de Dados` | Genie |
@@ -48,12 +48,11 @@ GENIE_ID = dbutils.widgets.get("genie_space_id").strip()
 DROP_SCHEMA = dbutils.widgets.get("drop_schema") == "sim"
 
 AGENT_ENDPOINT = f"netbricks_agent_{SCHEMA}"
-AGENT_ENDPOINT_V2 = f"netbricks_agent_v2_{SCHEMA}"  # variante ResponsesAgent (deploy_agent_2)
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
 TABELAS = ["catalogo", "usuarios", "eventos_visualizacao", "central_ajuda_kb",
            "features_usuarios", "scores_churn", "scores_upgrade"]
-MODELOS = ["netbricks_agent", "netbricks_agent_v2", "modelo_churn", "modelo_upgrade"]
+MODELOS = ["netbricks_agent", "modelo_churn", "modelo_upgrade"]
 # Experimentos MLflow (um por workload) — vivem em /Users, não são tocados pelo DROP SCHEMA.
 _user = spark.sql("SELECT current_user()").first()[0]
 EXPERIMENTOS = [f"/Users/{_user}/netbricks_prime_agent_{SCHEMA}",
@@ -61,8 +60,7 @@ EXPERIMENTOS = [f"/Users/{_user}/netbricks_prime_agent_{SCHEMA}",
                 f"/Users/{_user}/netbricks_prime_upgrade_{SCHEMA}"]
 
 print(f"Alvo do cleanup → {CATALOG}.{SCHEMA}")
-print(f"  App: {APP_NAME} | Genie: {GENIE_NAME} | VS endpoint: {VS_ENDPOINT}")
-print(f"  Agent endpoints: {AGENT_ENDPOINT}, {AGENT_ENDPOINT_V2}")
+print(f"  App: {APP_NAME} | Genie: {GENIE_NAME} | VS endpoint: {VS_ENDPOINT} | Agent endpoint: {AGENT_ENDPOINT}")
 print(f"  Apagar schema inteiro: {'SIM' if DROP_SCHEMA else 'não (só tabelas/modelos conhecidos)'}")
 
 # COMMAND ----------
@@ -106,9 +104,8 @@ step(f"App '{APP_NAME}' removido", lambda: w.apps.delete(name=APP_NAME))
 
 # COMMAND ----------
 
-for ep in (AGENT_ENDPOINT, AGENT_ENDPOINT_V2):
-    step(f"Endpoint de serving '{ep}' removido",
-         lambda ep=ep: w.serving_endpoints.delete(name=ep))
+step(f"Endpoint de serving '{AGENT_ENDPOINT}' removido",
+     lambda: w.serving_endpoints.delete(name=AGENT_ENDPOINT))
 
 # COMMAND ----------
 

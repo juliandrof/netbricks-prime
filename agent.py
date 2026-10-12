@@ -1,5 +1,9 @@
 """
-Agente Híbrido da Netbricks Prime (Mosaic AI Agent Framework — ChatAgent).
+Agente Híbrido da Netbricks Prime (Mosaic AI Agent Framework — ResponsesAgent).
+
+Expõe a interface **OpenAI Responses API** (`input` / `output`), compatível ao mesmo tempo com o
+**AI Playground** e com o template de **App "Chat UI for existing Agent"** (que envia `input` +
+blocos `input_text`) — sem nenhum ajuste no cliente.
 
 Três ferramentas, escolhidas pelo próprio LLM (tool calling):
   1. buscar_titulos   -> busca semântica no catálogo (Vector Search) = descoberta/recomendação
@@ -13,12 +17,16 @@ Defaults já batem com os recursos do lab; informe o GENIE_SPACE_ID (env ou widg
 """
 import json
 import os
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 import mlflow
 from databricks.sdk import WorkspaceClient
-from mlflow.pyfunc import ChatAgent
-from mlflow.types.agent import ChatAgentChunk, ChatAgentMessage, ChatAgentResponse
+from mlflow.pyfunc import ResponsesAgent
+from mlflow.types.responses import (
+    ResponsesAgentRequest,
+    ResponsesAgentResponse,
+    ResponsesAgentStreamEvent,
+)
 
 CATALOG = os.environ.get("CATALOG", "netbricks_prime")
 SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
@@ -83,15 +91,6 @@ TOOLS = [
 ]
 
 
-def _texto(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(b.get("text", "") for b in content
-                         if isinstance(b, dict) and b.get("type") == "text") or ""
-    return "" if content is None else str(content)
-
-
 def _in_model_serving() -> bool:
     """True quando rodando dentro de um endpoint de Model Serving (variáveis setadas pelo runtime)."""
     v = (os.environ.get("IS_IN_DB_MODEL_SERVING_ENV")
@@ -114,7 +113,7 @@ def _user_workspace_client():
     return WorkspaceClient()
 
 
-class NetbricksAgent(ChatAgent):
+class NetbricksAgent(ResponsesAgent):
     def __init__(self):
         self._w = None
         self._uw = None
@@ -218,11 +217,36 @@ class NetbricksAgent(ChatAgent):
         except Exception as e:
             return {"erro": str(e)[:300]}
 
-    @mlflow.trace(span_type="AGENT")
-    def predict(self, messages, context=None, custom_inputs=None) -> ChatAgentResponse:
+    # ---- borda Responses API ----
+    def _flatten_content(self, content) -> str:
+        """Achata o `content` de um item de input (string ou blocos input_text/output_text/text)."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            partes = []
+            for b in content:
+                d = b if isinstance(b, dict) else (b.model_dump() if hasattr(b, "model_dump") else {})
+                if d.get("type") in ("input_text", "output_text", "text"):
+                    partes.append(d.get("text", ""))
+            return "\n".join(p for p in partes if p)
+        return "" if content is None else str(content)
+
+    def _input_to_messages(self, request: ResponsesAgentRequest):
+        """Converte os itens de `request.input` (formato Responses) em mensagens de chat completions."""
         msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
-        for m in messages:
-            msgs.append({"role": m.role, "content": m.content})
+        for item in request.input:
+            d = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+            role = d.get("role")
+            if role not in ("user", "assistant", "system", "developer"):
+                continue  # ignora itens sem papel de mensagem (ex.: reasoning, tool items)
+            if role == "developer":
+                role = "system"
+            msgs.append({"role": role, "content": self._flatten_content(d.get("content"))})
+        return msgs
+
+    @mlflow.trace(span_type="AGENT")
+    def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+        msgs = self._input_to_messages(request)
 
         final = ""
         for _ in range(5):  # limite de rodadas de tool calling
@@ -249,16 +273,18 @@ class NetbricksAgent(ChatAgent):
                 msgs.append({"role": "tool", "tool_call_id": tc.id,
                              "content": json.dumps(result, ensure_ascii=False)})
 
-        return ChatAgentResponse(
-            messages=[ChatAgentMessage(role="assistant", content=final or "(sem resposta)", id="1")])
+        item = self.create_text_output_item(text=final or "(sem resposta)", id="1")
+        return ResponsesAgentResponse(output=[item])
 
     @mlflow.trace(span_type="AGENT")
-    def predict_stream(self, messages, context=None, custom_inputs=None):
-        # A Review App e o AI Playground chamam o agente em modo streaming. A resposta é
-        # produzida pelo predict (loop de tool calling) e devolvida como um único chunk.
-        response = self.predict(messages, context, custom_inputs)
-        for message in response.messages:
-            yield ChatAgentChunk(delta=message)
+    def predict_stream(
+        self, request: ResponsesAgentRequest
+    ) -> Generator[ResponsesAgentStreamEvent, None, None]:
+        # A Review App, o AI Playground e o App chamam o agente em modo streaming. A resposta é
+        # produzida pelo predict (loop de tool calling) e devolvida como um único item concluído.
+        response = self.predict(request)
+        for item in response.output:
+            yield ResponsesAgentStreamEvent(type="response.output_item.done", item=item)
 
 
 from mlflow.models import set_model

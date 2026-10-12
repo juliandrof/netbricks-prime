@@ -10,6 +10,10 @@
 # MAGIC # 02 · Deploy do Agente Híbrido — Netbricks Prime
 # MAGIC Loga o `agent.py`, registra no Unity Catalog e faz deploy em Model Serving.
 # MAGIC
+# MAGIC > O `agent.py` é um **`ResponsesAgent`** (interface OpenAI Responses API), compatível ao mesmo
+# MAGIC > tempo com o **AI Playground** e com o template de **App "Chat UI for existing Agent"** (que
+# MAGIC > envia `input` + blocos `input_text`) — sem ajuste no cliente.
+# MAGIC
 # MAGIC > Usa **MLflow 3** (`mlflow[databricks]>=3.1`), o que habilita o **tracing em tempo real**
 # MAGIC > do agente no endpoint (os spans `@mlflow.trace` do `agent.py` aparecem no experimento/Review App).
 # MAGIC
@@ -88,7 +92,8 @@ system_policy = SystemAuthPolicy(resources=[
 ])
 user_policy = UserAuthPolicy(api_scopes=["serving.serving-endpoints", "dashboards.genie"])
 auth_policy = AuthPolicy(system_auth_policy=system_policy, user_auth_policy=user_policy)
-input_example = {"messages": [{"role": "user", "content": "me recomenda uma ficção científica leve"}]}
+# input_example no formato Responses API (input + role/content) — o que o App e o Playground enviam.
+input_example = {"input": [{"role": "user", "content": "me recomenda uma ficção científica leve"}]}
 
 # COMMAND ----------
 

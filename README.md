@@ -120,8 +120,10 @@ Rodada pelo `00_preparar_ambiente.py` (ou individualmente, **nesta ordem**):
 
 ## O agente híbrido (`agent.py`)
 
-`ChatAgent` do Mosaic AI Agent Framework. O próprio LLM (por padrão `databricks-claude-opus-4-8`)
-escolhe entre 3 ferramentas via *tool calling* (loop de até 5 rodadas):
+`ResponsesAgent` do Mosaic AI Agent Framework (interface OpenAI Responses API) — compatível ao
+mesmo tempo com o **AI Playground** e com o template de **App "Chat UI for existing Agent"**, sem
+ajuste no cliente. O próprio LLM (por padrão `databricks-claude-opus-4-8`) escolhe entre 3
+ferramentas via *tool calling* (loop de até 5 rodadas):
 
 | Ferramenta | Tipo | Para quê |
 |------------|------|----------|
