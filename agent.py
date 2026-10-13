@@ -33,7 +33,8 @@ SCHEMA = os.environ.get("SCHEMA", "suas_iniciais_aqui")
 VS_ENDPOINT = os.environ.get("VS_ENDPOINT", f"netbricks_vs_{SCHEMA}")
 IDX_CAT = os.environ.get("IDX_CAT", f"{CATALOG}.{SCHEMA}.catalogo_index")
 IDX_AJU = os.environ.get("IDX_AJU", f"{CATALOG}.{SCHEMA}.ajuda_index")
-LLM = os.environ.get("LLM_MODEL", "databricks-claude-opus-4-8")
+# Modelo pelo nome de 3 partes no Unity Catalog (model service do Unity Gateway).
+LLM = os.environ.get("LLM_MODEL", "system.ai.claude-opus-4-8")
 # ID do Genie Space usado pela ferramenta consultar_dados (via API REST do SDK). Obrigatório p/ essa tool.
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 
@@ -136,9 +137,13 @@ class NetbricksAgent(ResponsesAgent):
 
     @property
     def oai(self):
-        # Cliente OpenAI do serving com credenciais do usuário (OBO). Reconstruído a cada acesso
-        # para usar o token do request atual.
-        return self.user_w.serving_endpoints.get_open_ai_client()
+        # Cliente OpenAI apontando para a API unificada do Unity Gateway (/ai-gateway/mlflow/v1),
+        # que aceita o modelo pelo nome UC de 3 partes (ex.: system.ai.claude-opus-4-8). A chamada
+        # é OBO (como o usuário): o token vem das credenciais do WorkspaceClient do usuário.
+        from openai import OpenAI
+        cfg = self.user_w.config
+        token = cfg.authenticate().get("Authorization", "").split(" ", 1)[-1]
+        return OpenAI(api_key=token, base_url=f"{cfg.host.rstrip('/')}/ai-gateway/mlflow/v1")
 
     def _vs_query(self, index_name, columns, query_text, num_results, filters=None):
         """Consulta um índice de Vector Search via SDK (credenciais de sistema)."""
@@ -244,13 +249,13 @@ class NetbricksAgent(ResponsesAgent):
             msgs.append({"role": role, "content": self._flatten_content(d.get("content"))})
         return msgs
 
-    @mlflow.trace(span_type="AGENT")
     def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
         msgs = self._input_to_messages(request)
 
+        oai = self.oai
         final = ""
         for _ in range(5):  # limite de rodadas de tool calling
-            resp = self.oai.chat.completions.create(
+            resp = oai.chat.completions.create(
                 model=LLM, messages=msgs, tools=TOOLS, max_tokens=1024)
             msg = resp.choices[0].message
             if not msg.tool_calls:
@@ -276,7 +281,6 @@ class NetbricksAgent(ResponsesAgent):
         item = self.create_text_output_item(text=final or "(sem resposta)", id="1")
         return ResponsesAgentResponse(output=[item])
 
-    @mlflow.trace(span_type="AGENT")
     def predict_stream(
         self, request: ResponsesAgentRequest
     ) -> Generator[ResponsesAgentStreamEvent, None, None]:

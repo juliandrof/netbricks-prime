@@ -20,8 +20,9 @@
 # MAGIC ## Autenticação
 # MAGIC - **Credenciais de sistema** (service principal do endpoint) para Vector Search e embeddings
 # MAGIC   — declarados como *resources* e autorizados automaticamente no deploy.
-# MAGIC - **On-behalf-of-user (OBO)** para o **LLM** e o **Genie** — chamados como o usuário que
-# MAGIC   invoca o agente (escopos `serving.serving-endpoints` e `dashboards.genie`).
+# MAGIC - **On-behalf-of-user (OBO)** para o **LLM** (via Unity Gateway, `/ai-gateway/mlflow/v1`) e o
+# MAGIC   **Genie** — chamados como o usuário que invoca o agente (escopos `serving.serving-endpoints`,
+# MAGIC   `ai-gateway` e `dashboards.genie`).
 # MAGIC
 # MAGIC > ⚠️ **Pré-requisito (admin do workspace):** habilite o preview
 # MAGIC > **"Agent Framework: On-Behalf-Of-User Authorization"** em *(seu usuário) → Previews* antes do deploy.
@@ -39,9 +40,11 @@
 
 # CATALOG, SCHEMA e VS_ENDPOINT vêm do _config. Aqui só o que é específico do deploy.
 dbutils.widgets.text("genie_space_id", "", "Genie Space ID (obrigatório)")
-# Endpoint de LLM: Foundation Model com tool calling.
-# Default: databricks-claude-opus-4-8. Troque se quiser (ex.: databricks-gpt-5-2, databricks-claude-sonnet-5).
-dbutils.widgets.text("llm", "databricks-claude-opus-4-8", "Endpoint do LLM")
+# Modelo do LLM pelo nome de 3 partes no Unity Catalog (model service do Unity Gateway),
+# chamado pela API unificada do gateway (/ai-gateway/mlflow/v1).
+# Default: system.ai.claude-opus-4-8. Troque por outro model service (ex.: system.ai.claude-sonnet-4-5
+# ou um catalog.schema.nome do seu catálogo).
+dbutils.widgets.text("llm", "system.ai.claude-opus-4-8", "Modelo do LLM (nome UC de 3 partes)")
 GENIE_SPACE_ID = dbutils.widgets.get("genie_space_id").strip()
 
 IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
@@ -64,7 +67,7 @@ os.environ.update(ENV)
 import mlflow
 from mlflow.models.auth_policy import AuthPolicy, SystemAuthPolicy, UserAuthPolicy
 from mlflow.models.resources import DatabricksVectorSearchIndex, DatabricksServingEndpoint
-from pkg_resources import get_distribution
+from importlib.metadata import version
 
 mlflow.set_registry_uri("databricks-uc")
 
@@ -84,13 +87,14 @@ mlflow.set_experiment(_exp_nome)
 #  - SystemAuthPolicy (resources): VS (índices catálogo/ajuda) e embeddings usam as credenciais
 #    de sistema (SP do endpoint), autorizadas automaticamente no deploy.
 #  - UserAuthPolicy (api_scopes): LLM e Genie são chamados via OBO (como o usuário):
-#    serving.serving-endpoints cobre o LLM; dashboards.genie cobre o Genie Space.
+#    o LLM via Unity Gateway (/ai-gateway/...) usa serving.serving-endpoints + ai-gateway;
+#    dashboards.genie cobre o Genie Space.
 system_policy = SystemAuthPolicy(resources=[
     DatabricksVectorSearchIndex(index_name=IDX_CAT),
     DatabricksVectorSearchIndex(index_name=IDX_AJU),
     DatabricksServingEndpoint(endpoint_name=EMB),
 ])
-user_policy = UserAuthPolicy(api_scopes=["serving.serving-endpoints", "dashboards.genie"])
+user_policy = UserAuthPolicy(api_scopes=["serving.serving-endpoints", "ai-gateway", "dashboards.genie"])
 auth_policy = AuthPolicy(system_auth_policy=system_policy, user_auth_policy=user_policy)
 # input_example no formato Responses API (input + role/content) — o que o App e o Playground enviam.
 input_example = {"input": [{"role": "user", "content": "me recomenda uma ficção científica leve"}]}
@@ -99,13 +103,13 @@ input_example = {"input": [{"role": "user", "content": "me recomenda uma ficçã
 
 with mlflow.start_run(run_name="netbricks_agent"):
     logged = mlflow.pyfunc.log_model(
-        artifact_path="agent", python_model="agent.py",
+        name="agent", python_model="agent.py",
         input_example=input_example, auth_policy=auth_policy,
-        pip_requirements=[f"mlflow[databricks]=={get_distribution('mlflow').version}",
-                          f"databricks-vectorsearch=={get_distribution('databricks-vectorsearch').version}",
-                          f"databricks-sdk=={get_distribution('databricks-sdk').version}",
-                          f"databricks-ai-bridge=={get_distribution('databricks-ai-bridge').version}",
-                          f"openai=={get_distribution('openai').version}"],
+        pip_requirements=[f"mlflow[databricks]=={version('mlflow')}",
+                          f"databricks-vectorsearch=={version('databricks-vectorsearch')}",
+                          f"databricks-sdk=={version('databricks-sdk')}",
+                          f"databricks-ai-bridge=={version('databricks-ai-bridge')}",
+                          f"openai=={version('openai')}"],
     )
 print("✅ logado:", logged.model_uri)
 

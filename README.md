@@ -56,20 +56,23 @@ precisa ter permissão de uso).
 
 | Papel | Modelo | Onde entra |
 |-------|--------|------------|
-| LLM do agente | `databricks-claude-opus-4-8` (Foundation Model API) — **parametrizável** | raciocínio e *tool calling* do agente híbrido |
+| LLM do agente | `system.ai.claude-opus-4-8` (model service do Unity Gateway, nome UC de 3 partes) — **parametrizável** | raciocínio e *tool calling* do agente híbrido |
 | Embeddings | `databricks-gte-large-en` (Foundation Model API) | geração de embeddings dos índices de Vector Search |
 | ML clássico | scikit-learn `HistGradientBoostingClassifier` | modelos de churn e de propensão de upgrade |
 
-> Os dois modelos de Foundation Model acima são endpoints de serving — é exatamente neles que o
-> **Unity AI Gateway** é configurado (ver seção abaixo).
+> O LLM é consumido como **model service do Unity Gateway** (chamado pela API unificada
+> `/ai-gateway/mlflow/v1` pelo nome UC de 3 partes), então toda chamada já passa pela governança do
+> gateway; o endpoint de embeddings é um endpoint de serving. Ver a seção do Unity AI Gateway abaixo.
 
 > **O LLM é um parâmetro (widget `llm`) no notebook 02.** O default é
-> `databricks-claude-opus-4-8` — um modelo de chat com *tool calling*.
-> Como o LLM é chamado **via OBO (on-behalf-of-user)**, quem precisa de acesso ao Foundation Model
+> `system.ai.claude-opus-4-8` — referenciado pelo **nome de 3 partes no Unity Catalog** (model
+> service do Unity Gateway) e chamado pela **API unificada** do gateway (`/ai-gateway/mlflow/v1`),
+> com *tool calling*.
+> Como o LLM é chamado **via OBO (on-behalf-of-user)**, quem precisa de `EXECUTE` no model service
 > é o **usuário** que invoca o agente — não o service principal do endpoint. Você pode trocar por
-> qualquer endpoint de chat com *tool calling* a que o usuário do lab tenha acesso (ex.:
-> `databricks-gpt-5-2`, `databricks-claude-sonnet-5`). O agente usa o valor via a variável de
-> ambiente `LLM_MODEL`.
+> qualquer model service de chat com *tool calling* a que o usuário tenha acesso (ex.:
+> `system.ai.claude-sonnet-4-5` ou um `catalog.schema.nome` customizado). O agente usa o valor via a
+> variável de ambiente `LLM_MODEL`.
 
 ---
 
@@ -78,8 +81,8 @@ precisa ter permissão de uso).
 - Workspace Databricks com **Serverless compute** habilitado.
 - **Unity Catalog** com um catálogo onde você possa criar schema/tabelas/modelos.
 - **Vector Search** habilitado no workspace.
-- Acesso às **Foundation Model APIs**: o **usuário** do lab precisa de acesso ao endpoint de LLM
-  escolhido (widget `llm`; default `databricks-claude-opus-4-8`), pois ele é chamado via OBO; o
+- Acesso às **Foundation Model APIs**: o **usuário** do lab precisa de `EXECUTE` no model service de
+  LLM escolhido (widget `llm`; default `system.ai.claude-opus-4-8`), pois ele é chamado via OBO; o
   endpoint de embeddings (`databricks-gte-large-en`) é usado com credenciais de sistema.
 - **Preview "Agent Framework: On-Behalf-Of-User Authorization" habilitado** pelo admin do workspace
   (em *(seu usuário) → Previews*) — necessário para o agente chamar LLM e Genie como o usuário.
@@ -122,7 +125,7 @@ Rodada pelo `00_preparar_ambiente.py` (ou individualmente, **nesta ordem**):
 
 `ResponsesAgent` do Mosaic AI Agent Framework (interface OpenAI Responses API) — compatível ao
 mesmo tempo com o **AI Playground** e com o template de **App "Chat UI for existing Agent"**, sem
-ajuste no cliente. O próprio LLM (por padrão `databricks-claude-opus-4-8`) escolhe entre 3
+ajuste no cliente. O próprio LLM (por padrão `system.ai.claude-opus-4-8`) escolhe entre 3
 ferramentas via *tool calling* (loop de até 5 rodadas):
 
 | Ferramenta | Tipo | Para quê |
@@ -145,7 +148,7 @@ O agente combina dois modos de credencial:
   pelo **Vector Search** (`buscar_titulos`, `suporte`) e pelo endpoint de **embeddings**.
 - **On-behalf-of-user (OBO)**: usadas pelo **LLM** e pelo **Genie** (`consultar_dados`), que são
   chamados como o usuário que invoca o agente. No deploy isso aparece como
-  `UserAuthPolicy(api_scopes=["serving.serving-endpoints", "dashboards.genie"])`.
+  `UserAuthPolicy(api_scopes=["serving.serving-endpoints", "ai-gateway", "dashboards.genie"])`.
 
 > ⚠️ **Pré-requisito (admin):** habilite o preview **"Agent Framework: On-Behalf-Of-User
 > Authorization"** antes do deploy, para o Model Serving encaminhar o token do usuário.
@@ -165,9 +168,10 @@ O agente combina dois modos de credencial:
 
 ## 🛡️ Onde entra o Unity AI Gateway
 
-O **Unity AI Gateway** é a camada de governança que fica **na frente dos endpoints de model serving**
-que o lab usa — principalmente o LLM do agente (`databricks-claude-opus-4-8`) e, se desejado, o
-endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o código do agente:
+O **Unity AI Gateway** é a camada de governança que fica **na frente dos modelos** que o lab usa —
+principalmente o LLM do agente, consumido como **model service** (`system.ai.claude-opus-4-8`) pela
+API unificada do gateway (`/ai-gateway/mlflow/v1`). Ele adiciona, de forma centralizada e sem alterar
+o código do agente:
 
 - **Guardrails de segurança/PII** — detecção e mascaramento (ou bloqueio) de dados sensíveis em
   prompts e respostas;
@@ -176,14 +180,16 @@ endpoint de embeddings. Ele adiciona, de forma centralizada e sem alterar o cód
   Unity Catalog para auditoria e análise de custo;
 - **Fallbacks** — roteamento para modelos alternativos.
 
-**Como encaixar neste lab:** habilite o Unity AI Gateway no endpoint de Foundation Model que o agente
-consome (`databricks-claude-opus-4-8`). Assim, cada chamada que o agente faz passa pelos
-guardrails e é registrada — o agente continua idêntico, mas a camada de GenAI fica governada.
+**Como encaixar neste lab:** como o agente chama o LLM pela API unificada do gateway, usando o nome UC
+de 3 partes (`system.ai.claude-opus-4-8`), **cada chamada já passa pelo Unity Gateway** — os
+guardrails, rate limits e o logging aplicados ao model service valem automaticamente, sem alterar o
+código do agente. Você aplica/ajusta essas políticas no próprio model service (ou cria um model
+service customizado `catalog.schema.nome` com rate limits, fallbacks e inference tables próprios).
 
-> **Observação importante:** os guardrails do Unity AI Gateway são configurados em endpoints de
-> *pay-per-token*, *provisioned throughput* ou *external model* — **não** no endpoint do agente
-> em si. Por isso a governança é aplicada ao **endpoint do LLM subjacente** que o agente chama,
-> e não ao endpoint `netbricks_agent`.
+> **Observação importante:** as políticas do Unity AI Gateway (guardrails/*service policies*, rate
+> limits, inference tables, fallbacks) são configuradas no **model service do LLM** — **não** no
+> endpoint do agente (`netbricks_agent`). Por isso a governança é aplicada ao **LLM subjacente** que
+> o agente chama.
 
 ---
 
