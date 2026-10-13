@@ -52,7 +52,7 @@ IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
 TABELAS = ["catalogo", "usuarios", "eventos_visualizacao", "central_ajuda_kb",
            "features_usuarios", "scores_churn", "scores_upgrade"]
-MODELOS = ["netbricks_agent", "modelo_churn", "modelo_upgrade"]
+MODELOS = [f"netbricks_agent_{SCHEMA}", "modelo_churn", "modelo_upgrade"]
 # Experimentos MLflow (um por workload) — vivem em /Users, não são tocados pelo DROP SCHEMA.
 _user = spark.sql("SELECT current_user()").first()[0]
 EXPERIMENTOS = [f"/Users/{_user}/netbricks_prime_agent_{SCHEMA}",

@@ -188,7 +188,7 @@ service customizado `catalog.schema.nome` com rate limits, fallbacks e inference
 
 > **Observação importante:** as políticas do Unity AI Gateway (guardrails/*service policies*, rate
 > limits, inference tables, fallbacks) são configuradas no **model service do LLM** — **não** no
-> endpoint do agente (`netbricks_agent`). Por isso a governança é aplicada ao **LLM subjacente** que
+> endpoint do agente (`netbricks_agent_<schema>`). Por isso a governança é aplicada ao **LLM subjacente** que
 > o agente chama.
 
 ---
@@ -210,7 +210,7 @@ cota, sem precisar logar o modelo de novo.
 
 **Tabelas:** `catalogo`, `usuarios`, `eventos_visualizacao`, `central_ajuda_kb`,
 `features_usuarios`, `scores_churn`, `scores_upgrade`
-**Modelos (UC):** `modelo_churn`, `modelo_upgrade`, `netbricks_agent`
+**Modelos (UC):** `modelo_churn`, `modelo_upgrade`, `netbricks_agent_<schema>`
 **Vector Search:** endpoint `netbricks_vs_<schema>` + índices `catalogo_index`, `ajuda_index`
 **Serving:** endpoint do agente `netbricks_agent_<schema>`
 **Workspace:** App `chat-netbricks` + Genie Agent `Netbricks Prime — Genie de Dados`

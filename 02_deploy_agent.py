@@ -51,7 +51,7 @@ IDX_CAT = f"{CATALOG}.{SCHEMA}.catalogo_index"
 IDX_AJU = f"{CATALOG}.{SCHEMA}.ajuda_index"
 LLM = dbutils.widgets.get("llm").strip()
 EMB = "databricks-gte-large-en"
-AGENT_MODEL = f"{CATALOG}.{SCHEMA}.netbricks_agent"
+AGENT_MODEL = f"{CATALOG}.{SCHEMA}.netbricks_agent_{SCHEMA}"  # nome com schema, isolado por participante
 AGENT_ENDPOINT = f"netbricks_agent_{SCHEMA}"  # serving endpoint é global no workspace
 
 import os
