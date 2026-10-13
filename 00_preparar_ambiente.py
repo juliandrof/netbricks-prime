@@ -41,4 +41,4 @@ for i, nb in enumerate(NOTEBOOKS, 1):
     print(f"✅ [{i}/{len(NOTEBOOKS)}] {nb} concluído\n")
 
 print(f"🎉 Preparação concluída em {CATALOG}.{SCHEMA}. "
-      f"Siga para 01_criar_genie_space → 02_deploy_agent → (criar o App) → 03_conceder_escopos_app.")
+      f"Siga para 01_criar_genie_agent → 02_deploy_agent → (criar o App) → 03_conceder_escopos_app.")

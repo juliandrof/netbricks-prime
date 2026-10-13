@@ -98,7 +98,7 @@ Do zero ao agente rodando dentro de um App — **6 passos**:
 |:-:|-------|------------|
 | **1** | ⚙️ **Preencher o `_config`** | Defina `CATALOG` e `SCHEMA` **uma única vez** no notebook `_config`. Todos os demais notebooks o reaproveitam via `%run`. |
 | **2** | 🏗️ **Criar todo o ambiente** | Rode o `00_preparar_ambiente.py` — o **orquestrador** executa, em ordem, os 5 notebooks de `preparacao/` (dados → features → ML → Vector Search). |
-| **3** | 🧞 **Criar o Genie Agent** | Rode o `01_criar_genie_space.py` (prepara PK/FK e consolida as especificações) e, em seguida, peça ao **Genie code**:<br>👉 *"Crie um genie agent baseado nas especificações deste notebook"* |
+| **3** | 🧞 **Criar o Genie Agent** | Rode o `01_criar_genie_agent.py` (prepara PK/FK e consolida as especificações) e, em seguida, peça ao **Genie code**:<br>👉 *"Crie um genie agent baseado nas especificações deste notebook"* |
 | **4** | 🤖 **Fazer o deploy do agente** | Copie o **ID do Genie Agent** gerado no passo 3 e cole no widget `genie_space_id` do `02_deploy_agent.py`. Rode o notebook → o agente é logado, registrado no UC e publicado em Model Serving (`netbricks_agent_<schema>`). |
 | **5** | 💬 **Criar o App** | Crie um **Databricks App** apontando para o **agente já publicado** (o endpoint de serving do passo 4). |
 | **6** | 🔑 **Conceder os escopos ao App** | Rode o `03_conceder_escopos_app.py` (widget `APP_NAME`, padrão `chat-netbricks`) — ele faz um `PATCH /api/2.0/apps/{APP_NAME}` aplicando os `user_api_scopes` necessários (`model-serving`, `serving.serving-endpoints`, `genie`, `dashboards.genie`, `sql`, `ai-gateway`, `vector-search` e `catalog.*:read`). |
@@ -155,7 +155,7 @@ O agente combina dois modos de credencial:
 
 ### Genie Agent para a ferramenta de dados
 
-1. Rode o notebook **`01_criar_genie_space.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
+1. Rode o notebook **`01_criar_genie_agent.py`** — ele adiciona as chaves PK/FK (dicas de *join*)
    e consolida as **especificações** do Genie (tabelas, instruções, perguntas de exemplo).
 2. Peça ao **Genie code**: *"Crie um genie agent baseado nas especificações deste notebook"*.
 3. Copie o **ID do Genie Agent** gerado.
