@@ -21,8 +21,8 @@
 # MAGIC - **Credenciais de sistema** (service principal do endpoint) para Vector Search e embeddings
 # MAGIC   — declarados como *resources* e autorizados automaticamente no deploy.
 # MAGIC - **On-behalf-of-user (OBO)** para o **LLM** (via Unity Gateway, `/ai-gateway/mlflow/v1`) e o
-# MAGIC   **Genie** — chamados como o usuário que invoca o agente (escopos `serving.serving-endpoints`,
-# MAGIC   `ai-gateway` e `dashboards.genie`).
+# MAGIC   **Genie** — chamados como o usuário que invoca o agente (escopos `model-serving`,
+# MAGIC   `ai-gateway` e `genie`).
 # MAGIC
 # MAGIC > ⚠️ **Pré-requisito (admin do workspace):** habilite o preview
 # MAGIC > **"Agent Framework: On-Behalf-Of-User Authorization"** em *(seu usuário) → Previews* antes do deploy.
@@ -87,14 +87,14 @@ mlflow.set_experiment(_exp_nome)
 #  - SystemAuthPolicy (resources): VS (índices catálogo/ajuda) e embeddings usam as credenciais
 #    de sistema (SP do endpoint), autorizadas automaticamente no deploy.
 #  - UserAuthPolicy (api_scopes): LLM e Genie são chamados via OBO (como o usuário):
-#    o LLM via Unity Gateway (/ai-gateway/...) usa serving.serving-endpoints + ai-gateway;
-#    dashboards.genie cobre o Genie Space.
+#    o LLM via Unity Gateway (/ai-gateway/...) usa model-serving + ai-gateway;
+#    genie cobre o Genie Space.
 system_policy = SystemAuthPolicy(resources=[
     DatabricksVectorSearchIndex(index_name=IDX_CAT),
     DatabricksVectorSearchIndex(index_name=IDX_AJU),
     DatabricksServingEndpoint(endpoint_name=EMB),
 ])
-user_policy = UserAuthPolicy(api_scopes=["serving.serving-endpoints", "ai-gateway", "dashboards.genie"])
+user_policy = UserAuthPolicy(api_scopes=["model-serving", "ai-gateway", "genie"])
 auth_policy = AuthPolicy(system_auth_policy=system_policy, user_auth_policy=user_policy)
 # input_example no formato Responses API (input + role/content) — o que o App e o Playground enviam.
 input_example = {"input": [{"role": "user", "content": "me recomenda uma ficção científica leve"}]}

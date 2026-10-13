@@ -101,7 +101,7 @@ Do zero ao agente rodando dentro de um App — **6 passos**:
 | **3** | 🧞 **Criar o Genie Agent** | Rode o `01_criar_genie_agent.py` (prepara PK/FK e consolida as especificações) e, em seguida, peça ao **Genie code**:<br>👉 *"Crie um genie agent baseado nas especificações deste notebook"* |
 | **4** | 🤖 **Fazer o deploy do agente** | Copie o **ID do Genie Agent** gerado no passo 3 e cole no widget `genie_space_id` do `02_deploy_agent.py`. Rode o notebook → o agente é logado, registrado no UC e publicado em Model Serving (`netbricks_agent_<schema>`). |
 | **5** | 💬 **Criar o App** | Crie um **Databricks App** apontando para o **agente já publicado** (o endpoint de serving do passo 4). |
-| **6** | 🔑 **Conceder os escopos ao App** | Rode o `03_conceder_escopos_app.py` (widget `APP_NAME`, padrão `chat-netbricks`) — ele faz um `PATCH /api/2.0/apps/{APP_NAME}` aplicando os `user_api_scopes` necessários (`model-serving`, `serving.serving-endpoints`, `genie`, `dashboards.genie`, `sql`, `ai-gateway`, `vector-search` e `catalog.*:read`). |
+| **6** | 🔑 **Conceder os escopos ao App** | Rode o `03_conceder_escopos_app.py` (widget `APP_NAME`, padrão `chat-netbricks`) — ele faz um `PATCH /api/2.0/apps/{APP_NAME}` aplicando os `user_api_scopes` necessários (`model-serving`, `genie`, `sql`, `ai-gateway`, `vector-search` e `catalog.*:read`). |
 
 ### Detalhe do passo 2 — fase de preparação (`preparacao/`)
 
@@ -148,7 +148,7 @@ O agente combina dois modos de credencial:
   pelo **Vector Search** (`buscar_titulos`, `suporte`) e pelo endpoint de **embeddings**.
 - **On-behalf-of-user (OBO)**: usadas pelo **LLM** e pelo **Genie** (`consultar_dados`), que são
   chamados como o usuário que invoca o agente. No deploy isso aparece como
-  `UserAuthPolicy(api_scopes=["serving.serving-endpoints", "ai-gateway", "dashboards.genie"])`.
+  `UserAuthPolicy(api_scopes=["model-serving", "ai-gateway", "genie"])`.
 
 > ⚠️ **Pré-requisito (admin):** habilite o preview **"Agent Framework: On-Behalf-Of-User
 > Authorization"** antes do deploy, para o Model Serving encaminhar o token do usuário.

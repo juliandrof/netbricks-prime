@@ -29,9 +29,7 @@ response = requests.patch(
         "user_api_scopes": [
             "sql",
             "genie",
-            "dashboards.genie",
             "model-serving",
-            "serving.serving-endpoints",
             "ai-gateway",
             "catalog.catalogs:read",
             "catalog.schemas:read",

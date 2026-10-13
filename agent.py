@@ -178,7 +178,7 @@ class NetbricksAgent(ResponsesAgent):
         """Encaminha a pergunta ao Genie Space via API REST do SDK, como o usuário (OBO).
 
         O Genie gera e executa o SQL com governança — o agente não monta SQL. Requer o escopo
-        ``dashboards.genie`` no deploy."""
+        ``genie`` no deploy."""
         if not GENIE_SPACE_ID:
             return {"erro": "GENIE_SPACE_ID não configurado — defina a variável de ambiente."}
         msg = self.user_w.genie.start_conversation_and_wait(GENIE_SPACE_ID, pergunta)
