@@ -29,7 +29,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install --quiet -U "mlflow[databricks]>=3.1" databricks-vectorsearch databricks-agents databricks-sdk databricks-ai-bridge openai
+# MAGIC %pip install --quiet -U "mlflow[databricks]>=3.1" databricks-vectorsearch databricks-agents databricks-sdk databricks-ai-bridge "openai>=1.109.1,<3"
 # MAGIC %restart_python
 
 # COMMAND ----------
