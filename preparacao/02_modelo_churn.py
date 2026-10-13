@@ -19,7 +19,7 @@
 
 TBL_FEAT = f"{CATALOG}.{SCHEMA}.features_usuarios"
 TBL_SCORES = f"{CATALOG}.{SCHEMA}.scores_churn"
-MODELO_UC = f"{CATALOG}.{SCHEMA}.modelo_churn"
+MODELO_UC = f"{CATALOG}.{SCHEMA}.modelo_churn_{SCHEMA}"
 
 # COMMAND ----------
 

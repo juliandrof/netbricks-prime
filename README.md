@@ -210,7 +210,7 @@ cota, sem precisar logar o modelo de novo.
 
 **Tabelas:** `catalogo`, `usuarios`, `eventos_visualizacao`, `central_ajuda_kb`,
 `features_usuarios`, `scores_churn`, `scores_upgrade`
-**Modelos (UC):** `modelo_churn`, `modelo_upgrade`, `netbricks_agent_<schema>`
+**Modelos (UC):** `modelo_churn_<schema>`, `modelo_upgrade_<schema>`, `netbricks_agent_<schema>`
 **Vector Search:** endpoint `netbricks_vs_<schema>` + índices `catalogo_index`, `ajuda_index`
 **Serving:** endpoint do agente `netbricks_agent_<schema>`
 **Workspace:** App `chat-netbricks` + Genie Agent `Netbricks Prime — Genie de Dados`
